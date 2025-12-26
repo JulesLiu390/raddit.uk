@@ -1,0 +1,219 @@
+.post-card {
+  display: flex;
+  background: white;
+  padding: 16px 20px;
+  gap: 16px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.post-card:hover {
+  background: #fafafa;
+}
+
+.post-card:first-child {
+  border-radius: 8px 8px 0 0;
+}
+
+.post-card:last-child {
+  border-bottom: none;
+  border-radius: 0 0 8px 8px;
+}
+
+.post-card:only-child {
+  border-radius: 8px;
+}
+
+/* 排名 */
+.post-rank {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 700;
+  color: #8590a6;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.post-rank.rank-1 {
+  color: #f1403c;
+}
+
+.post-rank.rank-2 {
+  color: #ff7340;
+}
+
+.post-rank.rank-3 {
+  color: #ffac38;
+}
+
+/* 主内容 */
+.post-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.post-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin: 0 0 8px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.post-card:hover .post-title {
+  color: var(--primary-color);
+}
+
+.post-summary {
+  font-size: 14px;
+  color: #646464;
+  margin: 0 0 10px;
+  line-height: 1.7;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Meta 信息 */
+.post-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #8590a6;
+  margin-bottom: 0;
+}
+
+.meta-divider {
+  color: #d3d3d3;
+}
+
+.post-author {
+  color: #646464;
+}
+
+/* 统计按钮 */
+.post-stats {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.stat-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #8590a6;
+  transition: all 0.15s;
+}
+
+.stat-btn:hover {
+  background: #f0f0f0;
+  color: #0066ff;
+}
+
+.stat-icon {
+  font-size: 13px;
+}
+
+.heat-value {
+  color: #f1403c;
+  font-weight: 500;
+}
+
+.share-btn {
+  margin-left: auto;
+}
+
+/* 缩略图 */
+.post-thumbnail {
+  width: 150px;
+  height: 100px;
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.post-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 新帖标记 */
+.new-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1403c;
+  color: white;
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  margin-left: 6px;
+  font-weight: 500;
+}
+
+/* 响应式 */
+@media (max-width: 600px) {
+  .post-card {
+    padding: 12px 16px;
+    gap: 12px;
+  }
+
+  .post-rank {
+    width: 18px;
+    font-size: 14px;
+  }
+
+  .post-title {
+    font-size: 15px;
+    margin-bottom: 4px;
+  }
+
+  .post-summary {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 13px;
+    margin-bottom: 6px;
+    line-height: 1.4;
+  }
+
+  .post-thumbnail {
+    width: 80px;
+    height: 60px;
+  }
+
+  .post-stats {
+    margin-top: 8px;
+    gap: 4px;
+  }
+
+  .stat-btn {
+    padding: 2px 4px;
+    font-size: 11px;
+  }
+  
+  .share-btn {
+    display: none;
+  }
+}
