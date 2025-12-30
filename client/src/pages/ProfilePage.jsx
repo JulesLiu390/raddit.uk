@@ -172,10 +172,7 @@ function ProfilePage({ user, onLogout }) {
       // Fetch posts
       const allPosts = await getPosts();
       // Filter posts by this user
-      const myPosts = allPosts.filter(p => {
-        if (profileUser?.id) return p.authorId === profileUser.id;
-        return p.author === profileUser?.name;
-      });
+      const myPosts = allPosts.filter(p => profileUser?.id && p.authorId === profileUser.id);
       setUserPosts(myPosts);
 
       // Fetch replies with post info

@@ -538,7 +538,7 @@ app.get('/api/users/:id/posts', async (req, res) => {
 // 获取用户发布的回复
 app.get('/api/users/:id/replies', async (req, res) => {
   try {
-    const replies = await Message.find({ authorId: req.params.id, parentId: { $ne: null } }).sort({ createdAt: -1 });
+    const replies = await Message.find({ authorId: req.params.id }).sort({ createdAt: -1 });
     
     // Enrich with post title
     const enrichedReplies = await Promise.all(replies.map(async (reply) => {
