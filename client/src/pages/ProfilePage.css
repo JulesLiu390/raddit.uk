@@ -404,3 +404,48 @@
 .confirm-btn:hover {
   background: #0060a8;
 }
+
+/* Crop Avatar Modal */
+.crop-avatar-modal {
+  width: 500px;
+  max-width: 90vw;
+}
+
+.crop-container {
+  position: relative;
+  width: 100%;
+  height: 400px;
+  background: #333;
+  margin-bottom: 20px;
+}
+
+.profile-avatar-container {
+  position: relative;
+  width: 160px;
+  height: 160px;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 4px solid white;
+  background: white;
+  box-shadow: 0 1px 3px rgba(26, 26, 26, 0.1);
+}
+
+.avatar-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+  font-weight: 500;
+}
+
+.profile-avatar-container:hover .avatar-overlay {
+  opacity: 1;
+}
