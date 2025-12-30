@@ -1,8 +1,9 @@
 import { useNavigate } from 'react-router-dom';
-import { BsFire, BsShare } from 'react-icons/bs';
+import { BsFire, BsShare, BsTrash } from 'react-icons/bs';
+import { deletePost } from '../api';
 import './PostCard.css';
 
-function PostCard({ post, rank, isNew }) {
+function PostCard({ post, rank, isNew, user, onDelete }) {
   const navigate = useNavigate();
 
   // 格式化数字
@@ -24,6 +25,19 @@ function PostCard({ post, rank, isNew }) {
     return num + '热度';
   };
 
+  const handleDelete = async (e) => {
+    e.stopPropagation();
+    if (window.confirm('确定要删除这个帖子吗？')) {
+      try {
+        await deletePost(post.id);
+        if (onDelete) onDelete(post.id);
+      } catch (err) {
+        console.error('Failed to delete post:', err);
+        alert('删除失败');
+      }
+    }
+  };
+
   return (
     <article className="post-card" onClick={() => window.open(`/post/${post.id}`, '_blank')}>
       {/* 排名 */}
@@ -35,10 +49,30 @@ function PostCard({ post, rank, isNew }) {
 
       {/* 主内容 */}
       <div className="post-main">
-        <h3 className="post-title">
-          {post.title}
-          {isNew && <span className="new-badge">新</span>}
-        </h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <h3 className="post-title">
+            {post.title}
+            {isNew && <span className="new-badge">新</span>}
+          </h3>
+          {user && user.role === 'admin' && (
+            <button 
+              className="delete-btn" 
+              onClick={handleDelete}
+              style={{ 
+                border: '1px solid #ff4d4f', 
+                color: '#ff4d4f', 
+                background: 'transparent',
+                borderRadius: '4px',
+                padding: '2px 8px',
+                cursor: 'pointer',
+                fontSize: '12px',
+                marginLeft: '10px'
+              }}
+            >
+              删除
+            </button>
+          )}
+        </div>
         
         {post.content && (
           <p className="post-summary">

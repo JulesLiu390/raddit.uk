@@ -4,6 +4,9 @@ import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import PostDetailPage from './pages/PostDetailPage';
 import ProfilePage from './pages/ProfilePage';
+import TopicDetailPage from './pages/TopicDetailPage';
+import TopicsPage from './pages/TopicsPage';
+import DiscoveryPage from './pages/DiscoveryPage';
 import { loginWithGoogle } from './api';
 import './App.css';
 
@@ -60,6 +63,10 @@ function App() {
           path="/" 
           element={<HomePage user={user} onLogout={handleLogout} />} 
         />
+        <Route 
+          path="/following" 
+          element={<HomePage user={user} onLogout={handleLogout} type="following" />} 
+        />
         <Route path="/login" element={
             <LoginPage 
               onGoogleCredential={handleGoogleCredential} 
@@ -70,6 +77,9 @@ function App() {
         <Route path="/post/:id" element={<PostDetailPage user={user} onLogout={handleLogout} />} />
         <Route path="/profile" element={<ProfilePage user={user} onLogout={handleLogout} />} />
         <Route path="/profile/:id" element={<ProfilePage user={user} onLogout={handleLogout} />} />
+                <Route path="/topics" element={<TopicsPage user={user} onLogout={handleLogout} />} />
+        <Route path="/discovery" element={<DiscoveryPage user={user} onLogout={handleLogout} />} />
+        <Route path="/topic/:id" element={<TopicDetailPage user={user} onLogout={handleLogout} />} />
       </Routes>
     </div>
   );

@@ -83,10 +83,10 @@ export default function SimpleEmojiPicker({ onEmojiSelect, onClose }) {
     setRecentEmojis(getRecentEmojis());
   }, []);
 
-  const handleEmojiClick = (emoji) => {
+  const handleEmojiClick = (emoji, e) => {
     const updated = saveRecentEmoji(emoji);
     setRecentEmojis(updated);
-    onEmojiSelect(emoji);
+    onEmojiSelect(emoji, e);
     onClose();
   };
 
@@ -122,7 +122,7 @@ export default function SimpleEmojiPicker({ onEmojiSelect, onClose }) {
           <button
             key={idx}
             className="sep-emoji-btn"
-            onClick={() => handleEmojiClick(emoji)}
+            onClick={(e) => handleEmojiClick(emoji, e)}
           >
             {emoji}
           </button>

@@ -62,9 +62,11 @@
 }
 
 .answer-content .wmde-markdown img {
-  max-width: 100%;
+  max-width: 50%;
+  height: auto;
   border-radius: 6px;
   margin: 10px 0;
+  display: block;
 }
 
 .answer-content .wmde-markdown ul,
@@ -184,6 +186,26 @@
   height: 40px;
   border-radius: 50%;
   object-fit: cover;
+  transition: opacity 0.2s;
+}
+
+.author-avatar:hover {
+  opacity: 0.8;
+}
+
+.author-avatar.small {
+  width: 24px;
+  height: 24px;
+}
+
+.author-name {
+  font-weight: 600;
+  color: #1a1a1a;
+  transition: color 0.2s;
+}
+
+.author-name:hover {
+  color: #c75ea0;
 }
 
 .author-info {
@@ -194,6 +216,11 @@
 .author-name {
   font-weight: 600;
   color: #1a1a1a;
+  transition: color 0.2s;
+}
+
+.author-name:hover {
+  color: #c75ea0;
 }
 
 .verified-badge {
@@ -524,6 +551,11 @@
 }
 
 .answer-actions .action-btn:hover { background: rgba(0,0,0,0.05); color: #666; }
+
+.answer-actions .action-btn.active {
+  color: var(--primary-color);
+  background: rgba(255, 105, 180, 0.1);
+}
 
 .answer-actions .action-btn.upvote {
   color: var(--primary-color);

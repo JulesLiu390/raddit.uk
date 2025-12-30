@@ -1,16 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import SimpleEmojiPicker from '../components/SimpleEmojiPicker';
-import MDEditor from '@uiw/react-md-editor';
+import MDEditor, { commands } from '@uiw/react-md-editor';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import confetti from 'canvas-confetti';
+import party from 'party-js';
 import '@uiw/react-md-editor/markdown-editor.css';
 import '@uiw/react-markdown-preview/markdown.css';
+import { selectAndUploadImage, uploadImageToImgBB } from '../utils/imageUpload';
 import { 
   BsCheckCircleFill, 
   BsChatText, 
   BsShare, 
   BsStar, 
+  BsStarFill,
   BsHeart, 
   BsThreeDots, 
   BsPencilSquare, 
@@ -19,12 +23,55 @@ import {
   BsPencil,
   BsEmojiSmile,
   BsPlus,
-  BsCaretDownFill
+  BsCaretDownFill,
+  BsTrash
 } from 'react-icons/bs';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
-import { getPostMessages, createMessage } from '../api';
+import { getPost, getPostMessages, createMessage, toggleFollowPost, deleteMessage, reactToMessage, incrementPostView } from '../api';
 import './PostDetailPage.css';
+import customSticker1 from '../assets/customSticker1.png';
+
+// --- 自定义表情配置 ---
+const CUSTOM_REACTION_KEY = 'custom_sticker_1';
+const CUSTOM_REACTION_URL = customSticker1;
+// --------------------
+
+const MarkdownComponents = {
+  a: ({ node, ...props }) => {
+    let href = props.href || '';
+    // 如果链接不以 http, https, / (相对路径), # (锚点), mailto: 开头，则默认添加 https://
+    if (href && !href.match(/^(http|https|\/|#|mailto:|tel:)/)) {
+      href = `https://${href}`;
+    }
+    return <a {...props} href={href} target="_blank" rel="noopener noreferrer" />;
+  }
+};
+
+// 自定义图片上传命令
+const imageUploadCommand = {
+  name: 'upload-image',
+  keyCommand: 'upload-image',
+  buttonProps: { 'aria-label': '上传图片', title: '上传图片' },
+  icon: (
+    <svg width="12" height="12" viewBox="0 0 20 20">
+      <path fill="currentColor" d="M15 9c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm4-7H1c-.55 0-1 .45-1 1v14c0 .55.45 1 1 1h18c.55 0 1-.45 1-1V3c0-.55-.45-1-1-1zm-1 13l-6-5-2 2-4-5-4 8V4h16v11z"/>
+    </svg>
+  ),
+  execute: (state, api) => {
+    selectAndUploadImage((status) => {
+      if (status === 'uploading') {
+        // 可以添加loading提示
+        console.log('上传中...');
+      }
+    }).then((url) => {
+      const modifyText = `![image](${url})`;
+      api.replaceSelection(modifyText);
+    }).catch((error) => {
+      alert(`上传失败: ${error.message}`);
+    });
+  },
+};
 
 const CommentNode = ({ 
   message, 
@@ -35,8 +82,10 @@ const CommentNode = ({
   setReplyContent, 
   submitting, 
   handleSubmitAnswer,
-  handleReaction
+  handleReaction,
+  handleDeleteMessage
 }) => {
+  const navigate = useNavigate();
   const [expanded, setExpanded] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const pickerRef = useRef(null);
@@ -57,8 +106,8 @@ const CommentNode = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const onEmojiSelect = (emoji) => {
-    handleReaction(message.id, emoji);
+  const onEmojiSelect = (emoji, e) => {
+    handleReaction(message.id, emoji, e);
     setShowPicker(false);
   };
 
@@ -74,9 +123,17 @@ const CommentNode = ({
           <button 
             key={emoji} 
             className={`reaction-pill ${userIds.includes(user?.id) ? 'active' : ''}`}
-            onClick={() => handleReaction(message.id, emoji)}
+            onClick={(e) => handleReaction(message.id, emoji, e)}
           >
-            <span className="emoji">{emoji}</span>
+            {emoji === CUSTOM_REACTION_KEY ? (
+              <img 
+                src={CUSTOM_REACTION_URL} 
+                alt="custom" 
+                style={{ width: '18px', height: '18px', objectFit: 'contain', marginRight: '4px', verticalAlign: 'text-bottom' }} 
+              />
+            ) : (
+              <span className="emoji">{emoji}</span>
+            )}
             <span className="count">{userIds.length}</span>
           </button>
         ))}
@@ -84,19 +141,29 @@ const CommentNode = ({
         {/* Preset Buttons (always show if no reactions, or just append) */}
         {/* User asked for preset 😍 and 🤮 buttons. Let's show them if not already reacted with them? 
             Or just have them as quick actions next to the pills? 
-            Let's put them as quick actions if not present in pills to save space, 
+            Let's put them as quick actions if not present in the pills to save space, 
             or just rely on the picker. 
             The prompt says "Preset 😍 and 🤮 buttons". 
             Let's add them as small icon buttons if they aren't already in the pills.
         */}
         {!reactions['😍'] && (
-          <button className="reaction-preset" onClick={() => handleReaction(message.id, '😍')}>
+          <button className="reaction-preset" onClick={(e) => handleReaction(message.id, '😍', e)}>
             😍
           </button>
         )}
         {!reactions['🤮'] && (
-          <button className="reaction-preset" onClick={() => handleReaction(message.id, '🤮')}>
+          <button className="reaction-preset" onClick={(e) => handleReaction(message.id, '🤮', e)}>
             🤮
+          </button>
+        )}
+        {/* 自定义图片预设按钮 */}
+        {!reactions[CUSTOM_REACTION_KEY] && (
+          <button className="reaction-preset" onClick={(e) => handleReaction(message.id, CUSTOM_REACTION_KEY, e)}>
+            <img 
+              src={CUSTOM_REACTION_URL} 
+              alt="custom" 
+              style={{ width: '20px', height: '20px', objectFit: 'contain', display: 'block' }} 
+            />
           </button>
         )}
 
@@ -131,10 +198,18 @@ const CommentNode = ({
             src={message.authorAvatar || 'https://picsum.photos/40/40?random=1'} 
             alt="avatar" 
             className="author-avatar small" 
+            onClick={() => message.authorId && navigate(`/profile/${message.authorId}`)}
+            style={{ cursor: message.authorId ? 'pointer' : 'default' }}
           />
           <div className="author-info">
             <div className="author-name-row">
-              <span className="author-name">{message.author}</span>
+              <span 
+                className="author-name"
+                onClick={() => message.authorId && navigate(`/profile/${message.authorId}`)}
+                style={{ cursor: message.authorId ? 'pointer' : 'default' }}
+              >
+                {message.author}
+              </span>
               {message.isVerified && <BsCheckCircleFill className="verified-badge" />}
               {message.replyToUserId && (
                 <span className="reply-to">回复 @{message.replyToName || message.replyToUserId}</span>
@@ -152,9 +227,15 @@ const CommentNode = ({
             src={message.authorAvatar || 'https://picsum.photos/40/40?random=1'} 
             alt="avatar" 
             className="author-avatar" 
+            onClick={() => message.authorId && navigate(`/profile/${message.authorId}`)}
+            style={{ cursor: message.authorId ? 'pointer' : 'default' }}
           />
           <div className="author-info">
-            <div className="author-name">
+            <div 
+              className="author-name"
+              onClick={() => message.authorId && navigate(`/profile/${message.authorId}`)}
+              style={{ cursor: message.authorId ? 'pointer' : 'default' }}
+            >
               {message.author}
               {message.isVerified && <BsCheckCircleFill className="verified-badge" />}
             </div>
@@ -163,12 +244,14 @@ const CommentNode = ({
             )}
             {message.authorBio && <div className="author-bio">{message.authorBio}</div>}
           </div>
-          <button className="follow-btn">+ 关注</button>
+          {user && message.authorId !== user.id && (
+            <button className="follow-btn" onClick={() => alert('关注用户功能开发中')}>+ 关注</button>
+          )}
         </div>
       )}
 
       <div className={`answer-content ${isNested ? 'compact' : ''}`}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
           {message.content}
         </ReactMarkdown>
       </div>
@@ -186,16 +269,21 @@ const CommentNode = ({
         </div>
 
         <button 
-          className="action-btn" 
+          className={`action-btn ${replyTarget && replyTarget.id === message.id ? 'active' : ''}`}
           onClick={() => {
             if (!canReply) return;
-            setReplyTarget(message);
-            setReplyContent('');
+            if (replyTarget && replyTarget.id === message.id) {
+              setReplyTarget(null);
+              setReplyContent('');
+            } else {
+              setReplyTarget(message);
+              setReplyContent('');
+            }
           }} 
           disabled={!canReply}
         >
           <BsChatText />
-          <span>{isNested ? '回复' : '回复'}</span>
+          <span>{replyTarget && replyTarget.id === message.id ? '取消回复' : (isNested ? '回复' : '回复')}</span>
         </button>
         
         {!isNested && (
@@ -215,13 +303,24 @@ const CommentNode = ({
           </>
         )}
 
+        {(user?.role === 'admin' || user?.id === message.authorId) && (
+          <button 
+            className="action-btn delete-btn" 
+            onClick={() => handleDeleteMessage(message.id)}
+            style={{ color: '#ff4d4f' }}
+          >
+            <BsTrash />
+            <span>删除</span>
+          </button>
+        )}
+
         <div className={isNested ? "more-actions" : "more-action"}>
           <BsThreeDots className="more-btn" />
         </div>
       </div>
 
       {/* 楼中楼输入框 */}
-      {replyTarget?.id === message.id && (
+      {replyTarget && replyTarget.id === message.id && (
         <div className={`inline-reply-box ${isNested ? 'compact' : ''}`}>
           <div className="identity-hint" style={{ marginBottom: '8px', fontSize: '14px', color: '#666' }}>
             {user ? (
@@ -245,6 +344,24 @@ const CommentNode = ({
               hideToolbar={false}
               autoFocus
               disabled={submitting}
+              textareaProps={{
+                onPaste: (e) => handlePaste(e, setReplyContent)
+              }}
+              commands={[
+                commands.bold,
+                commands.italic,
+                commands.strikethrough,
+                commands.hr,
+                commands.divider,
+                commands.link,
+                imageUploadCommand,
+                commands.divider,
+                commands.codeBlock,
+                commands.quote,
+                commands.divider,
+                commands.unorderedListCommand,
+                commands.orderedListCommand,
+              ]}
             />
             <div className="answer-form-actions">
               <button type="button" className="cancel-btn" onClick={() => {
@@ -280,6 +397,7 @@ const CommentNode = ({
                   submitting={submitting}
                   handleSubmitAnswer={handleSubmitAnswer}
                   handleReaction={handleReaction}
+                  handleDeleteMessage={handleDeleteMessage}
                 />
               ))}
               <button className="collapse-replies-btn" onClick={() => setExpanded(false)}>
@@ -310,6 +428,12 @@ function PostDetailPage({ user, onLogout }) {
   const [showPostPicker, setShowPostPicker] = useState(false);
   const [followingPost, setFollowingPost] = useState(false);
   const postPickerRef = useRef(null);
+  
+  useEffect(() => {
+    if (post && user) {
+      setFollowingPost(post.followers?.includes(user.id));
+    }
+  }, [post, user]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -333,6 +457,8 @@ function PostDetailPage({ user, onLogout }) {
   useEffect(() => {
     fetchPost();
     fetchMessages();
+    // Increment view count
+    incrementPostView(id).catch(err => console.error('Failed to increment view:', err));
   }, [id]);
 
   useEffect(() => {
@@ -341,6 +467,27 @@ function PostDetailPage({ user, onLogout }) {
       document.title = title;
     }
   }, [post]);
+
+  const handleFollowPost = async () => {
+    if (!user) {
+      alert('请先登录');
+      return;
+    }
+    try {
+      const data = await toggleFollowPost(id);
+      setFollowingPost(data.isFollowing);
+      // Update local post object to reflect follower count change if needed
+      setPost(prev => ({
+        ...prev,
+        followers: data.isFollowing 
+          ? [...(prev.followers || []), user.id]
+          : (prev.followers || []).filter(uid => uid !== user.id)
+      }));
+    } catch (err) {
+      console.error('Failed to toggle follow:', err);
+      alert('操作失败，请重试');
+    }
+  };
 
   const fetchPost = async () => {
     try {
@@ -357,9 +504,67 @@ function PostDetailPage({ user, onLogout }) {
   const fetchMessages = async () => {
     try {
       const data = await getPostMessages(id);
-      setMessages(data);
+      // Ensure each message has an id property, compatible with backend returning _id
+      const processedData = data.map(msg => ({
+        ...msg,
+        id: msg.id || msg._id
+      }));
+      setMessages(processedData);
     } catch (err) {
       console.error('获取评论失败:', err);
+    }
+  };
+
+  // 处理粘贴图片
+  const handlePaste = async (e, setContent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      
+      // 检查是否为图片
+      if (item.type.indexOf('image') !== -1) {
+        e.preventDefault(); // 阻止默认粘贴行为
+        
+        const file = item.getAsFile();
+        if (!file) continue;
+
+        try {
+          console.log('正在上传图片...');
+          const url = await uploadImageToImgBB(file);
+          
+          // 获取当前光标位置
+          const textarea = e.target;
+          const start = textarea.selectionStart;
+          const end = textarea.selectionEnd;
+          
+          // 获取当前内容
+          const currentContent = textarea.value || '';
+          
+          // 在光标位置插入图片
+          const imageMarkdown = `![image](${url})`;
+          const newContent = 
+            currentContent.substring(0, start) + 
+            imageMarkdown + 
+            currentContent.substring(end);
+          
+          setContent(newContent);
+          
+          // 设置新的光标位置（图片 Markdown 之后）
+          setTimeout(() => {
+            const newPosition = start + imageMarkdown.length;
+            textarea.setSelectionRange(newPosition, newPosition);
+            textarea.focus();
+          }, 0);
+          
+        } catch (error) {
+          console.error('粘贴图片上传失败:', error);
+          alert(`图片上传失败: ${error.message}`);
+        }
+        
+        break; // 只处理第一张图片
+      }
     }
   };
 
@@ -402,14 +607,86 @@ function PostDetailPage({ user, onLogout }) {
     }
   };
 
-  const handleReaction = async (targetId, emoji) => {
+  const triggerEmojiExplosion = (x, y, emojiChar, targetElement) => {
+    // 如果是自定义图片表情
+    if (emojiChar === CUSTOM_REACTION_KEY) {
+      if (targetElement) {
+        const img = document.createElement('img');
+        img.src = CUSTOM_REACTION_URL;
+        img.style.width = '20px'; // Set size for the particle
+        img.style.height = '20px';
+        
+        const runConfetti = () => {
+          party.confetti(targetElement, {
+            count: 20,
+            spread: 300,
+            speed: party.variation.range(5, 10),
+            shapes: [img],
+            size: 1
+          });
+        };
+
+        if (img.complete) {
+          runConfetti();
+        } else {
+          img.onload = runConfetti;
+        }
+      }
+      return;
+    }
+
+    const scalar = 2;
+    const shape = confetti.shapeFromText({ text: emojiChar, scalar });
+    
+    confetti({
+      particleCount: 15,
+      scalar,
+      spread: 40,
+      origin: { x, y },
+      shapes: [shape],
+      gravity: 0.8,
+      drift: 0,
+      ticks: 60,
+      startVelocity: 10
+    });
+  };
+
+  const handleReaction = async (targetId, emoji, e) => {
+    // Trigger explosion if event exists
+    if (e && user) {
+      // Check if we are adding or removing (optimistic check)
+      const msg = messages.find(m => m.id === targetId);
+      const currentReactions = msg?.reactions?.[emoji] || [];
+      const isAdding = !currentReactions.includes(user.id);
+      
+      if (isAdding) {
+        // Calculate position
+        let x, y;
+        if (e.clientX && e.clientY) {
+          x = e.clientX / window.innerWidth;
+          y = e.clientY / window.innerHeight;
+        } else {
+          const rect = e.target.getBoundingClientRect();
+          x = (rect.left + rect.width / 2) / window.innerWidth;
+          y = (rect.top + rect.height / 2) / window.innerHeight;
+        }
+        triggerEmojiExplosion(x, y, emoji, e.currentTarget);
+      }
+    }
+
     try {
       // Optimistic update (optional, but good for UX)
       // For now, let's just wait for server response to keep state simple
       
+      const token = localStorage.getItem('raddit-token');
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const response = await fetch('https://raddit.uk:8443/api/react', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify({
           targetId,
           type: 'message',
@@ -444,11 +721,59 @@ function PostDetailPage({ user, onLogout }) {
     }
   };
 
-  const handlePostReaction = async (emoji) => {
+  const handleDeletePost = async () => {
+    if (!window.confirm('确定要删除这个帖子吗？此操作不可恢复。')) return;
     try {
+      await deletePost(id);
+      navigate('/');
+    } catch (err) {
+      console.error('删除帖子失败:', err);
+      alert('删除失败，请重试');
+    }
+  };
+
+  const handleDeleteMessage = async (messageId) => {
+    if (!window.confirm('确定要删除这条评论吗？')) return;
+    try {
+      await deleteMessage(messageId);
+      // Refresh messages
+      await fetchMessages();
+    } catch (err) {
+      console.error('删除评论失败:', err);
+      alert('删除失败，请重试');
+    }
+  };
+
+  const handlePostReaction = async (emoji, e) => {
+    // Trigger explosion if event exists
+    if (e && user) {
+      const currentReactions = post?.reactions?.[emoji] || [];
+      const isAdding = !currentReactions.includes(user.id);
+      
+      if (isAdding) {
+        let x, y;
+        if (e.clientX && e.clientY) {
+          x = e.clientX / window.innerWidth;
+          y = e.clientY / window.innerHeight;
+        } else {
+          const rect = e.target.getBoundingClientRect();
+          x = (rect.left + rect.width / 2) / window.innerWidth;
+          y = (rect.top + rect.height / 2) / window.innerHeight;
+        }
+        triggerEmojiExplosion(x, y, emoji, e.currentTarget);
+      }
+    }
+
+    try {
+      const token = localStorage.getItem('raddit-token');
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const response = await fetch('https://raddit.uk:8443/api/react', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify({
           targetId: post.id,
           type: 'post',
@@ -562,8 +887,13 @@ function PostDetailPage({ user, onLogout }) {
           <div className="floating-title-content">
             <span className="floating-title-text">{post.title}</span>
             <div className="floating-actions">
-              <button className="floating-btn primary">关注问题</button>
-              <button className="floating-btn secondary">
+              <button 
+                className={`floating-btn primary ${followingPost ? 'following' : ''}`}
+                onClick={handleFollowPost}
+              >
+                {followingPost ? '已关注' : '关注问题'}
+              </button>
+              <button className="floating-btn secondary" onClick={() => setShowAnswerForm(!showAnswerForm)}>
                 <BsPencil style={{ marginRight: '4px' }} />
                 写回答
               </button>
@@ -576,6 +906,33 @@ function PostDetailPage({ user, onLogout }) {
         <div className="post-detail-main">
           {/* 标题区域 */}
           <div className="post-header">
+            {/* Topics Tags */}
+            {post.topics && post.topics.length > 0 && (
+              <div className="post-topics" style={{ marginBottom: '12px', display: 'flex', gap: '8px' }}>
+                {post.topics.map(topic => (
+                  <span 
+                    key={topic.id} 
+                    className="topic-tag-pill"
+                    onClick={() => navigate(`/topic/${topic.id}`)}
+                    style={{
+                      background: '#eef6fc',
+                      color: '#0079d3',
+                      padding: '4px 12px',
+                      borderRadius: '16px',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                      transition: 'background 0.2s'
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.background = '#e0effa'}
+                    onMouseOut={(e) => e.currentTarget.style.background = '#eef6fc'}
+                  >
+                    {topic.name}
+                  </span>
+                ))}
+              </div>
+            )}
+
             <h1 className="post-detail-title">{post.title}</h1>
             
             {/* 帖子作者信息 */}
@@ -585,27 +942,45 @@ function PostDetailPage({ user, onLogout }) {
                   src={post.authorAvatar || 'https://picsum.photos/40/40?random=1'} 
                   alt="avatar" 
                   className="author-avatar" 
+                  onClick={() => post.authorId && navigate(`/profile/${post.authorId}`)}
+                  style={{ cursor: post.authorId ? 'pointer' : 'default' }}
                 />
                 <div className="author-info">
-                  <div className="author-name">
+                  <div 
+                    className="author-name"
+                    onClick={() => post.authorId && navigate(`/profile/${post.authorId}`)}
+                    style={{ cursor: post.authorId ? 'pointer' : 'default' }}
+                  >
                     {post.author}
                   </div>
                   <div className="post-time" style={{ fontSize: '14px', color: '#8590a6', marginTop: '4px' }}>
                     发布于 {new Date(post.createdAt).toLocaleString('zh-CN')}
                   </div>
                 </div>
-                <button className="follow-btn">+ 关注</button>
+                {user && post.authorId !== user.id && (
+                  <button className="follow-btn" onClick={() => alert('关注用户功能开发中')}>+ 关注</button>
+                )}
               </div>
             </div>
 
             {/* 帖子内容 */}
             {post.content && (
-              <div className="post-content">
-                <p>{post.content}</p>
+              <div className="post-content markdown-content">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
+                  {post.content}
+                </ReactMarkdown>
               </div>
             )}
             
             <div className="post-meta-bar">
+              <button 
+                className={`meta-btn ${followingPost ? 'active' : ''}`} 
+                onClick={handleFollowPost}
+                style={{ color: followingPost ? '#0079d3' : 'inherit' }}
+              >
+                {followingPost ? <BsStarFill className="icon" /> : <BsStar className="icon" />}
+                {followingPost ? '已关注' : '关注问题'}
+              </button>
               <button className="meta-btn" onClick={() => setShowAnswerForm(!showAnswerForm)}>
                 <BsPencilSquare className="icon" />
                 <span>写回答</span>
@@ -619,22 +994,40 @@ function PostDetailPage({ user, onLogout }) {
                     <button 
                       key={emoji} 
                       className={`reaction-pill ${userIds.includes(user?.id) ? 'active' : ''}`}
-                      onClick={() => handlePostReaction(emoji)}
+                      onClick={(e) => handlePostReaction(emoji, e)}
                     >
-                      <span className="emoji">{emoji}</span>
+                      {emoji === CUSTOM_REACTION_KEY ? (
+                        <img 
+                          src={CUSTOM_REACTION_URL} 
+                          alt="custom" 
+                          style={{ width: '18px', height: '18px', objectFit: 'contain', marginRight: '4px', verticalAlign: 'text-bottom' }} 
+                        />
+                      ) : (
+                        <span className="emoji">{emoji}</span>
+                      )}
                       <span className="count">{userIds.length}</span>
                     </button>
                   ))}
 
                   {/* Preset Buttons */}
                   {(!post.reactions || !post.reactions['😍']) && (
-                    <button className="reaction-preset" onClick={() => handlePostReaction('😍')}>
+                    <button className="reaction-preset" onClick={(e) => handlePostReaction('😍', e)}>
                       😍
                     </button>
                   )}
                   {(!post.reactions || !post.reactions['🤮']) && (
-                    <button className="reaction-preset" onClick={() => handlePostReaction('🤮')}>
+                    <button className="reaction-preset" onClick={(e) => handlePostReaction('🤮', e)}>
                       🤮
+                    </button>
+                  )}
+                  {/* 自定义图片预设按钮 */}
+                  {(!post.reactions || !post.reactions[CUSTOM_REACTION_KEY]) && (
+                    <button className="reaction-preset" onClick={(e) => handlePostReaction(CUSTOM_REACTION_KEY, e)}>
+                      <img 
+                        src={CUSTOM_REACTION_URL} 
+                        alt="custom" 
+                        style={{ width: '20px', height: '20px', objectFit: 'contain', display: 'block' }} 
+                      />
                     </button>
                   )}
 
@@ -650,7 +1043,10 @@ function PostDetailPage({ user, onLogout }) {
                     {showPostPicker && (
                       <div className="emoji-picker-popup">
                         <SimpleEmojiPicker 
-                          onEmojiSelect={handlePostReaction}
+                          onEmojiSelect={(emoji, e) => {
+                            handlePostReaction(emoji, e);
+                            setShowPostPicker(false);
+                          }}
                           onClose={() => setShowPostPicker(false)}
                         />
                       </div>
@@ -659,18 +1055,18 @@ function PostDetailPage({ user, onLogout }) {
                 </div>
               </div>
 
-              <button 
-                className={`meta-btn outline ${followingPost ? 'active' : ''}`}
-                onClick={() => setFollowingPost(!followingPost)}
-              >
-                <BsStar className="icon" />
-                <span>{followingPost ? '已关注' : '关注问题'}</span>
-              </button>
-              
               <button className="meta-btn outline">
                 <BsShare className="icon" />
                 <span>分享</span>
               </button>
+              
+              {(user?.role === 'admin' || user?.id === post.authorId) && (
+                <button className="meta-btn delete-btn" onClick={handleDeletePost} style={{ color: '#ff4d4f' }}>
+                  <BsTrash className="icon" />
+                  <span>删除</span>
+                </button>
+              )}
+              
               <BsThreeDots className="more-btn" />
             </div>
           </div>
@@ -699,6 +1095,24 @@ function PostDetailPage({ user, onLogout }) {
                   visibleDragbar={false}
                   hideToolbar={false}
                   disabled={submitting}
+                  textareaProps={{
+                    onPaste: (e) => handlePaste(e, setAnswerContent)
+                  }}
+                  commands={[
+                    commands.bold,
+                    commands.italic,
+                    commands.strikethrough,
+                    commands.hr,
+                    commands.divider,
+                    commands.link,
+                    imageUploadCommand,
+                    commands.divider,
+                    commands.codeBlock,
+                    commands.quote,
+                    commands.divider,
+                    commands.unorderedListCommand,
+                    commands.orderedListCommand,
+                  ]}
                 />
                 <div className="answer-form-actions">
                   <button type="button" className="cancel-btn" onClick={() => {
@@ -748,6 +1162,7 @@ function PostDetailPage({ user, onLogout }) {
                 submitting={submitting}
                 handleSubmitAnswer={handleSubmitAnswer}
                 handleReaction={handleReaction}
+                handleDeleteMessage={handleDeleteMessage}
               />
             ))}
           </div>

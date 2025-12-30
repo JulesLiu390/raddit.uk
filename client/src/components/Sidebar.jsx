@@ -1,22 +1,28 @@
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BsPerson, BsFire, BsArrowRepeat } from 'react-icons/bs';
+import { getHotPosts } from '../api';
 import './Sidebar.css';
 
-function Sidebar({ user, hotPosts }) {
+function Sidebar({ user }) {
   const navigate = useNavigate();
-  // 默认数据
-  const defaultHotPosts = hotPosts || [
-    { id: 1, title: '全球首款2nm手机芯片诞生', heat: '514万', isHot: true },
-    { id: 2, title: '美国斩杀线是什么', heat: '362万', isHot: true },
-    { id: 3, title: '朱孝天举报五月天公司逃税', heat: '362万', isHot: true },
-    { id: 4, title: '山东莱州发现亚洲最大海上金矿', heat: '353万' },
-    { id: 5, title: 'Raddit 摸鱼报告', heat: '348万' },
-    { id: 6, title: '强生爽身粉致癌案被判赔偿', heat: '343万', isHot: true },
-    { id: 7, title: '小学火灾案班主任量刑依据', heat: '322万' },
-    { id: 8, title: '京东年终奖投入涨幅超 70%', heat: '275万' },
-    { id: 9, title: '为何从领导岗退休下来的人很快就老了', heat: '270万' },
-    { id: 10, title: '爱泼斯坦案特朗普敏感照片曝光', heat: '266万' },
-  ];
+  const [hotPosts, setHotPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchHotPosts();
+  }, []);
+
+  const fetchHotPosts = async () => {
+    try {
+      const data = await getHotPosts();
+      setHotPosts(data);
+    } catch (err) {
+      console.error('Failed to fetch hot posts:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <aside className="sidebar">
@@ -60,20 +66,31 @@ function Sidebar({ user, hotPosts }) {
       <div className="sidebar-card">
         <div className="card-header">
           <span className="card-icon"><BsFire /></span>
-          <h3>大家都在搜</h3>
-          <button className="refresh-btn"><BsArrowRepeat /> 换一换</button>
+          <h3>魅力时刻</h3>
+          <button className="refresh-btn" onClick={fetchHotPosts}><BsArrowRepeat /> 刷新</button>
         </div>
         <ul className="hot-list">
-          {defaultHotPosts.map((post, index) => (
-            <li key={post.id} className="hot-item">
-              <span className={`hot-rank rank-${index + 1}`}>•</span>
-              <span className="hot-title">
-                {post.title}
-                {post.isHot && <span className="hot-badge">热</span>}
-              </span>
-              <span className="hot-heat">{post.heat}</span>
-            </li>
-          ))}
+          {loading ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>加载中...</div>
+          ) : hotPosts.length > 0 ? (
+            hotPosts.map((post, index) => (
+              <li 
+                key={post.id} 
+                className="hot-item"
+                onClick={() => navigate(`/post/${post.id}`)}
+                style={{ cursor: 'pointer' }}
+              >
+                <span className={`hot-rank rank-${index + 1}`}>•</span>
+                <span className="hot-title">
+                  {post.title}
+                  {post.heat > 10 && <span className="hot-badge">热</span>}
+                </span>
+                <span className="hot-heat">{post.heat}</span>
+              </li>
+            ))
+          ) : (
+            <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>暂无热门内容</div>
+          )}
         </ul>
       </div>
 

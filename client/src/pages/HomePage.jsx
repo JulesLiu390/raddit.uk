@@ -5,10 +5,10 @@ import LeftSidebar from '../components/LeftSidebar';
 import Sidebar from '../components/Sidebar';
 import PostCard from '../components/PostCard';
 import CreatePostModal from '../components/CreatePostModal';
-import { getPosts, createPost as apiCreatePost } from '../api';
+import { getPosts, createPost as apiCreatePost, getUserFollowing } from '../api';
 import './HomePage.css';
 
-function HomePage({ user, onLogout }) {
+function HomePage({ user, onLogout, type = 'all' }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -16,8 +16,8 @@ function HomePage({ user, onLogout }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
-    document.title = 'Raddit主页';
-  }, []);
+    document.title = type === 'following' ? '我关注的问题 - Raddit' : 'Raddit主页';
+  }, [type]);
 
   const handleCreatePost = async (postData) => {
     try {
@@ -37,8 +37,31 @@ function HomePage({ user, onLogout }) {
   const fetchPosts = async () => {
     setLoading(true);
     try {
-      const data = await getPosts();
-      setPosts(data);
+      let data;
+      if (type === 'following') {
+        if (!user) {
+          setPosts([]);
+          setLoading(false);
+          return;
+        }
+        data = await getUserFollowing(user.id);
+      } else {
+        data = await getPosts();
+      }
+      
+      // 为没有缩略图的帖子提取第一张图片
+      const postsWithThumbnails = data.map(post => {
+        if (!post.thumbnail && post.content) {
+          const imgRegex = /!\[.*?\]\((https?:\/\/[^\s)]+)\)/;
+          const match = post.content.match(imgRegex);
+          if (match && match[1]) {
+            return { ...post, thumbnail: match[1] };
+          }
+        }
+        return post;
+      });
+      
+      setPosts(postsWithThumbnails);
       setError(null);
     } catch (err) {
       console.error('获取后端数据失败:', err);
@@ -50,7 +73,7 @@ function HomePage({ user, onLogout }) {
 
   useEffect(() => {
     fetchPosts();
-  }, []);
+  }, [type, user]); // Re-fetch when type or user changes
 
   return (
     <div className={`home-page ${isMenuOpen ? 'menu-open' : ''}`}>
@@ -65,7 +88,7 @@ function HomePage({ user, onLogout }) {
       <main className="main-container">
         <div className="content-wrapper">
           {/* 左侧导航 */}
-          <LeftSidebar isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
+          <LeftSidebar isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} user={user} />
 
           {/* 主内容区 */}
           <div className="main-content">
@@ -95,8 +118,8 @@ function HomePage({ user, onLogout }) {
               {!loading && !error && posts.length === 0 && (
                 <div className="empty-state">
                   <span className="empty-icon"><BsInbox /></span>
-                  <p>还没有帖子，来发布第一篇吧！</p>
-                  <button onClick={() => setShowCreateModal(true)}>发布帖子</button>
+                  <p>{type === 'following' ? '还没有关注的问题' : '还没有帖子，来发布第一篇吧！'}</p>
+                  {type !== 'following' && <button onClick={() => setShowCreateModal(true)}>发布帖子</button>}
                 </div>
               )}
 
@@ -106,6 +129,8 @@ function HomePage({ user, onLogout }) {
                   post={post} 
                   rank={index + 1}
                   isNew={index < 2}
+                  user={user}
+                  onDelete={(id) => setPosts(posts.filter(p => p.id !== id))}
                 />
               ))}
             </div>

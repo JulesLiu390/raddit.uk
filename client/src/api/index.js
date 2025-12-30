@@ -1,6 +1,9 @@
 import axios from 'axios';
 
-const API_URL = 'https://raddit.uk:8443/api';
+// Use localhost for development, or the production URL if deployed
+const API_URL = window.location.hostname === 'localhost' 
+  ? 'https://localhost:8443/api' 
+  : 'https://raddit.uk:8443/api';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -9,13 +12,42 @@ const api = axios.create({
   },
 });
 
+// Add a request interceptor to include the token
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('raddit-token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
 export const getPosts = async () => {
   const response = await api.get('/posts');
   return response.data;
 };
 
+export const getHotPosts = async () => {
+  const response = await api.get('/posts/hot');
+  return response.data;
+};
+
+export const incrementPostView = async (postId) => {
+  const response = await api.post(`/posts/${postId}/view`);
+  return response.data;
+};
+
 export const createPost = async (postData) => {
   const response = await api.post('/posts', postData);
+  return response.data;
+};
+
+export const toggleFollowPost = async (postId) => {
+  const response = await api.post(`/posts/${postId}/follow`);
   return response.data;
 };
 
@@ -26,6 +58,27 @@ export const getPostMessages = async (postId) => {
 
 export const createMessage = async (postId, messageData) => {
   const response = await api.post(`/posts/${postId}/messages`, messageData);
+  return response.data;
+};
+
+// Topics
+export const getTopics = async () => {
+  const response = await api.get('/topics');
+  return response.data;
+};
+
+export const createTopic = async (topicData) => {
+  const response = await api.post('/topics', topicData);
+  return response.data;
+};
+
+export const getTopic = async (topicId) => {
+  const response = await api.get(`/topics/${topicId}`);
+  return response.data;
+};
+
+export const getTopicPosts = async (topicId) => {
+  const response = await api.get(`/topics/${topicId}/posts`);
   return response.data;
 };
 
@@ -46,6 +99,58 @@ export const getUserPosts = async (userId) => {
 
 export const getUserReplies = async (userId) => {
   const response = await api.get(`/users/${userId}/replies`);
+  return response.data;
+};
+
+export const getUserFollowing = async (userId) => {
+  const response = await api.get(`/users/${userId}/following`);
+  return response.data;
+};
+
+export const getUserFollowingUsers = async (userId) => {
+  const response = await api.get(`/users/${userId}/following-users`);
+  return response.data;
+};
+
+export const getUserReactions = async (userId) => {
+  const response = await api.get(`/users/${userId}/reactions`);
+  return response.data;
+};
+
+export const toggleFollowUser = async (userId) => {
+  const response = await api.post(`/users/${userId}/follow`);
+  return response.data;
+};
+
+export const getUser = async (userId) => {
+  const response = await api.get(`/users/${userId}`);
+  return response.data;
+};
+
+export const updateUser = async (userId, userData) => {
+  const response = await api.put(`/users/${userId}`, userData);
+  return response.data;
+};
+
+// Delete functions
+export const deletePost = async (postId) => {
+  const response = await api.delete(`/posts/${postId}`);
+  return response.data;
+};
+
+export const deleteMessage = async (messageId) => {
+  const response = await api.delete(`/messages/${messageId}`);
+  return response.data;
+};
+
+export const deleteTopic = async (topicId) => {
+  const response = await api.delete(`/topics/${topicId}`);
+  return response.data;
+};
+
+export const getDiscoveryFeed = async (cursor = null) => {
+  const params = cursor ? { cursor } : {};
+  const response = await api.get('/discovery', { params });
   return response.data;
 };
 

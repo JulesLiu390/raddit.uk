@@ -17,7 +17,9 @@ function Header({ onSearch, onCreatePost, onToggleMenu, user, onLogout }) {
   };
 
   const navItems = [
-    { key: 'hot', label: '热榜' },
+    { key: 'hot', label: '热榜', path: '/' },
+    { key: 'discovery', label: '发现', path: '/discovery' },
+    { key: 'topics', label: '话题', path: '/topics' },
   ];
 
   return (
@@ -37,13 +39,14 @@ function Header({ onSearch, onCreatePost, onToggleMenu, user, onLogout }) {
         {/* Navigation */}
         <nav className="header-nav">
           {navItems.map((item) => (
-            <button
+            <Link
               key={item.key}
-              className={`nav-item ${activeTab === item.key ? 'active' : ''}`}
+              to={item.path}
+              className={`nav-item ${window.location.pathname === item.path ? 'active' : ''}`}
               onClick={() => setActiveTab(item.key)}
             >
               {item.label}
-            </button>
+            </Link>
           ))}
         </nav>
 
