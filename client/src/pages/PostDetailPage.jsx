@@ -5,7 +5,7 @@ import MDEditor, { commands } from '@uiw/react-md-editor';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import confetti from 'canvas-confetti';
-import party from 'party-js';
+import ReactionBurst from '../components/ReactionBurst';
 import '@uiw/react-md-editor/markdown-editor.css';
 import '@uiw/react-markdown-preview/markdown.css';
 import { selectAndUploadImage, uploadImageToImgBB } from '../utils/imageUpload';
@@ -429,6 +429,9 @@ function PostDetailPage({ user, onLogout }) {
   const [followingPost, setFollowingPost] = useState(false);
   const postPickerRef = useRef(null);
   
+  // State for custom reaction burst
+  const [burstState, setBurstState] = useState({ active: false, x: 0, y: 0 });
+
   useEffect(() => {
     if (post && user) {
       setFollowingPost(post.followers?.includes(user.id));
@@ -611,26 +614,16 @@ function PostDetailPage({ user, onLogout }) {
     // 如果是自定义图片表情
     if (emojiChar === CUSTOM_REACTION_KEY) {
       if (targetElement) {
-        const img = document.createElement('img');
-        img.src = CUSTOM_REACTION_URL;
-        img.style.width = '20px'; // Set size for the particle
-        img.style.height = '20px';
+        const rect = targetElement.getBoundingClientRect();
+        // Calculate center of the button
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
         
-        const runConfetti = () => {
-          party.confetti(targetElement, {
-            count: 20,
-            spread: 300,
-            speed: party.variation.range(5, 10),
-            shapes: [img],
-            size: 1
-          });
-        };
-
-        if (img.complete) {
-          runConfetti();
-        } else {
-          img.onload = runConfetti;
-        }
+        setBurstState({ 
+          active: true, 
+          x: centerX, 
+          y: centerY 
+        });
       }
       return;
     }
@@ -881,6 +874,14 @@ function PostDetailPage({ user, onLogout }) {
     <div className="post-detail-page">
       <Header user={user} onLogout={onLogout} />
       
+      <ReactionBurst 
+        x={burstState.x} 
+        y={burstState.y} 
+        isActive={burstState.active} 
+        imageSrc={CUSTOM_REACTION_URL}
+        onComplete={() => setBurstState(prev => ({ ...prev, active: false }))}
+      />
+
       {/* 滚动时显示的标题栏 */}
       {isScrolled && (
         <div className="floating-title-bar">

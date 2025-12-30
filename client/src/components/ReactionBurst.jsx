@@ -17,7 +17,7 @@ const ReactionBurst = ({
   x, 
   y, 
   imageSrc, 
-  count = 12, 
+  count = 8, 
   isActive, 
   onComplete 
 }) => {
@@ -28,8 +28,8 @@ const ReactionBurst = ({
     return Array.from({ length: count }).map((_, i) => {
       const angle = (i / count) * 2 * Math.PI; // Uniform distribution
       // Add slight randomness to radius and float distance for natural look
-      const radius = 40 + Math.random() * 20; 
-      const floatDistance = 60 + Math.random() * 30;
+      const radius = 30 + Math.random() * 10; 
+      const floatDistance = 40 + Math.random() * 20;
       
       return {
         id: i,
@@ -47,11 +47,14 @@ const ReactionBurst = ({
       {isActive && (
         <div
           style={{
-            position: 'absolute',
+            position: 'fixed',
             left: x,
             top: y,
             pointerEvents: 'none', // Pass clicks through
-            zIndex: 1000,
+            zIndex: 9999,
+            width: 0,
+            height: 0,
+            overflow: 'visible'
           }}
         >
           {particles.map((particle) => (
@@ -86,8 +89,8 @@ const ReactionBurst = ({
               }}
               style={{
                 position: 'absolute',
-                width: '24px', // Adjust size as needed
-                height: '24px',
+                width: '20px', // Adjust size as needed
+                height: '20px',
                 transformOrigin: 'center center',
               }}
             />
