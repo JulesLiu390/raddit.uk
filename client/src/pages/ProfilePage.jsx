@@ -1,10 +1,65 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Header from '../components/Header';
 import { getPosts, getUserReplies, getPostMessages, getUser, updateUser, getUserFollowing, getUserFollowingUsers, toggleFollowUser, getUserReactions } from '../api';
+import Cropper from 'react-easy-crop';
+import { uploadImageToImgBB } from '../utils/imageUpload';
 import './ProfilePage.css';
+
+// Canvas 裁剪辅助函数
+const getCroppedImg = (imageSrc, pixelCrop) => {
+  const createImage = (url) =>
+    new Promise((resolve, reject) => {
+      const image = new Image();
+      image.addEventListener('load', () => resolve(image));
+      image.addEventListener('error', (error) => reject(error));
+      image.setAttribute('crossOrigin', 'anonymous');
+      image.src = url;
+    });
+
+  return new Promise(async (resolve, reject) => {
+    try {
+      const image = await createImage(imageSrc);
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+
+      if (!ctx) {
+        return reject(new Error('No 2d context'));
+      }
+
+      // 设置 canvas 大小为裁剪区域大小
+      canvas.width = pixelCrop.width;
+      canvas.height = pixelCrop.height;
+
+      // 绘制裁剪后的图片
+      ctx.drawImage(
+        image,
+        pixelCrop.x,
+        pixelCrop.y,
+        pixelCrop.width,
+        pixelCrop.height,
+        0,
+        0,
+        pixelCrop.width,
+        pixelCrop.height
+      );
+
+      // 导出为 Blob
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          reject(new Error('Canvas is empty'));
+          return;
+        }
+        blob.name = 'avatar.jpeg';
+        resolve(blob);
+      }, 'image/jpeg');
+    } catch (e) {
+      reject(e);
+    }
+  });
+};
 
 const MarkdownComponents = {
   a: ({ node, ...props }) => {
@@ -38,9 +93,60 @@ function ProfilePage({ user, onLogout }) {
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState('');
   
+  // Avatar Upload State
+  const [imageSrc, setImageSrc] = useState(null);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
+  const [showCropModal, setShowCropModal] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const fileInputRef = useRef(null);
+
   // Determine which user profile to show
   const isOwnProfile = !id || (user && user.id === id);
   const profileUser = isOwnProfile ? user : (fetchedUser || { name: 'Loading...', id: id });
+
+  // Avatar Upload Handlers
+  const onFileChange = async (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.addEventListener('load', () => {
+        setImageSrc(reader.result);
+        setShowCropModal(true);
+      });
+      reader.readAsDataURL(file);
+    }
+  };
+
+
+
+  const handleSaveAvatar = async () => {
+    try {
+      setUploadingAvatar(true);
+      const croppedBlob = await getCroppedImg(imageSrc, croppedAreaPixels);
+      const file = new File([croppedBlob], "avatar.jpg", { type: "image/jpeg" });
+      
+      const url = await uploadImageToImgBB(file);
+      
+      const updatedUser = await updateUser(user.id, { picture: url });
+      
+      // Update local user state if possible, or reload
+      if (isOwnProfile) {
+        localStorage.setItem('raddit-user', JSON.stringify(updatedUser));
+        window.location.reload();
+      } else {
+        setFetchedUser(updatedUser);
+      }
+      
+      setShowCropModal(false);
+    } catch (e) {
+      console.error('Failed to upload avatar:', e);
+      alert('头像上传失败，请重试');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
 
   useEffect(() => {
     if (!isOwnProfile && id) {
@@ -253,13 +359,21 @@ function ProfilePage({ user, onLogout }) {
             )}
           </div>
           <div className="profile-info-wrapper">
-            <div className="profile-avatar-container">
+            <div className="profile-avatar-container" onClick={() => isOwnProfile && fileInputRef.current.click()} style={{ cursor: isOwnProfile ? 'pointer' : 'default' }}>
               <img 
                 src={profileUser?.picture || `https://ui-avatars.com/api/?name=${profileUser?.name || 'User'}&background=random`} 
                 alt="avatar" 
                 className="profile-avatar" 
               />
+              {isOwnProfile && <div className="avatar-overlay">更换头像</div>}
             </div>
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={onFileChange} 
+              accept="image/*" 
+              style={{ display: 'none' }} 
+            />
             <div className="profile-main-info">
               <h1 className="profile-name">
                 {profileUser?.name || '匿名用户'}
@@ -516,6 +630,46 @@ function ProfilePage({ user, onLogout }) {
               <button className="cancel-btn" onClick={() => setShowEditModal(false)} disabled={editLoading}>取消</button>
               <button className="confirm-btn" onClick={handleUpdateProfile} disabled={editLoading}>
                 {editLoading ? '保存中...' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCropModal && (
+        <div className="modal-overlay">
+          <div className="modal-content crop-avatar-modal">
+            <div className="modal-header">
+              <h3>裁剪头像</h3>
+              <button className="close-btn" onClick={() => setShowCropModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              {imageSrc && (
+                <div className="crop-container">
+                  <Cropper
+                    image={imageSrc}
+                    crop={crop}
+                    zoom={zoom}
+                    aspect={1}
+                    onCropChange={setCrop}
+                    onZoomChange={setZoom}
+                    onCropComplete={(crop, pixelCrop) => setCroppedAreaPixels(pixelCrop)}
+                    cropShape="round"
+                    showGrid={true}
+                    styles={{
+                      cropArea: {
+                        borderRadius: '50%',
+                        boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.5)',
+                      },
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="cancel-btn" onClick={() => setShowCropModal(false)} disabled={uploadingAvatar}>取消</button>
+              <button className="confirm-btn" onClick={handleSaveAvatar} disabled={uploadingAvatar}>
+                {uploadingAvatar ? '上传中...' : '上传头像'}
               </button>
             </div>
           </div>
