@@ -28,7 +28,7 @@ import {
 } from 'react-icons/bs';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
-import { getPost, getPostMessages, createMessage, toggleFollowPost, deleteMessage, reactToMessage, incrementPostView } from '../api';
+import { getPost, getPostMessages, createMessage, toggleFollowPost, deleteMessage, reactToMessage, incrementPostView, toggleFollowUser, getUserFollowingUsers } from '../api';
 import './PostDetailPage.css';
 import customSticker1 from '../assets/customSticker1.png';
 
@@ -133,7 +133,8 @@ const CommentNode = ({
               />
             ) : (
               <span className="emoji">{emoji}</span>
-            )}
+            )
+            }
             <span className="count">{userIds.length}</span>
           </button>
         ))}
@@ -459,6 +460,7 @@ function PostDetailPage({ user, onLogout, onCreatePost }) {
   const [submitting, setSubmitting] = useState(false);
   const [showPostPicker, setShowPostPicker] = useState(false);
   const [followingPost, setFollowingPost] = useState(false);
+  const [isFollowingAuthor, setIsFollowingAuthor] = useState(false);
   const postPickerRef = useRef(null);
   
   // State for custom reaction burst
@@ -467,6 +469,14 @@ function PostDetailPage({ user, onLogout, onCreatePost }) {
   useEffect(() => {
     if (post && user) {
       setFollowingPost(post.followers?.includes(user.id));
+      
+      // Check if following author
+      if (post.authorId && post.authorId !== user.id) {
+        getUserFollowingUsers(user.id).then(following => {
+          const isFollowing = following.some(u => u.googleId === post.authorId);
+          setIsFollowingAuthor(isFollowing);
+        }).catch(err => console.error('Failed to check author follow status:', err));
+      }
     }
   }, [post, user]);
 
@@ -520,6 +530,20 @@ function PostDetailPage({ user, onLogout, onCreatePost }) {
       }));
     } catch (err) {
       console.error('Failed to toggle follow:', err);
+      alert('操作失败，请重试');
+    }
+  };
+
+  const handleFollowAuthor = async () => {
+    if (!user) {
+      alert('请先登录');
+      return;
+    }
+    try {
+      const data = await toggleFollowUser(post.authorId);
+      setIsFollowingAuthor(data.isFollowing);
+    } catch (err) {
+      console.error('Failed to toggle author follow:', err);
       alert('操作失败，请重试');
     }
   };
@@ -1007,7 +1031,17 @@ function PostDetailPage({ user, onLogout, onCreatePost }) {
                   </div>
                 </div>
                 {user && post.authorId !== user.id && (
-                  <button className="follow-btn" onClick={() => alert('关注用户功能开发中')}>+ 关注</button>
+                  <button 
+                    className={`follow-btn ${isFollowingAuthor ? 'following' : ''}`} 
+                    onClick={handleFollowAuthor}
+                    style={{
+                      backgroundColor: isFollowingAuthor ? '#f0f2f5' : '#eb459e',
+                      color: isFollowingAuthor ? '#666' : '#fff',
+                      border: 'none'
+                    }}
+                  >
+                    {isFollowingAuthor ? '已关注' : '+ 关注'}
+                  </button>
                 )}
               </div>
             </div>

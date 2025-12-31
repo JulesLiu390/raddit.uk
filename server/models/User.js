@@ -41,6 +41,10 @@ const userSchema = new mongoose.Schema({
     type: String, // googleId of users being followed
     ref: 'User'
   }],
+  followedTopics: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Topic'
+  }],
   followers: [{
     type: String, // googleId of followers
     ref: 'User'

@@ -23,7 +23,11 @@ const topicSchema = new mongoose.Schema({
   postCount: {
     type: Number,
     default: 0
-  }
+  },
+  followers: [{
+    type: String, // googleId of followers
+    ref: 'User'
+  }]
 });
 
 // Virtual for id

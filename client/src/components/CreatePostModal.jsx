@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import MDEditor, { commands } from '@uiw/react-md-editor';
 import { selectAndUploadImage, uploadImageToImgBB } from '../utils/imageUpload';
-import { getTopics, createTopic } from '../api';
+import { getTopics, createTopic, getUserFollowedTopics } from '../api';
 import { BsPlus, BsX } from 'react-icons/bs';
 import PinyinMatch from 'pinyin-match';
 import { pinyin } from 'pinyin-pro';
@@ -41,6 +41,7 @@ function CreatePostModal({ onClose, onSubmit, user, initialTopic }) {
   const [topicSearch, setTopicSearch] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loadingTopics, setLoadingTopics] = useState(false);
+  const [followedTopics, setFollowedTopics] = useState([]);
 
   useEffect(() => {
     loadTopics();
@@ -49,11 +50,16 @@ function CreatePostModal({ onClose, onSubmit, user, initialTopic }) {
   const loadTopics = async () => {
     setLoadingTopics(true);
     try {
-      const data = await getTopics();
-      setTopics(data);
+      const [allTopics, userFollowed] = await Promise.all([
+        getTopics(),
+        user ? getUserFollowedTopics(user.id) : Promise.resolve([])
+      ]);
+      
+      setTopics(allTopics);
+      setFollowedTopics(userFollowed);
       
       if (initialTopic) {
-        const preSelected = data.find(t => t.id === initialTopic || t.id === parseInt(initialTopic));
+        const preSelected = allTopics.find(t => t.id === initialTopic || t.id === parseInt(initialTopic));
         if (preSelected) {
           setSelectedTopics([preSelected]);
         }
@@ -259,6 +265,41 @@ function CreatePostModal({ onClose, onSubmit, user, initialTopic }) {
             <label>选择话题 (最多3个):</label>
             
             <div className="topic-selector-wrapper">
+              {/* 已关注话题推荐 */}
+              {followedTopics.length > 0 && !topicSearch && selectedTopics.length < 3 && (
+                <div className="followed-topics-recommendation" style={{ marginBottom: '10px' }}>
+                  <span className="recommendation-label" style={{ fontSize: '12px', color: '#666', marginRight: '8px' }}>已加入:</span>
+                  <div className="recommendation-list" style={{ display: 'inline-flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {followedTopics.map(topic => {
+                      const isSelected = selectedTopics.find(t => t.id === topic.id || t.id === topic._id);
+                      return (
+                        <button
+                          type="button"
+                          key={topic.id || topic._id}
+                          className={`topic-tag recommendation ${isSelected ? 'selected' : ''}`}
+                          onClick={() => !isSelected && handleSelectTopic(topic)}
+                          disabled={isSelected}
+                          style={{
+                            background: isSelected ? '#e6f7ff' : '#f5f5f5',
+                            border: isSelected ? '1px solid #1890ff' : '1px solid #d9d9d9',
+                            color: isSelected ? '#1890ff' : '#666',
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '12px',
+                            cursor: isSelected ? 'default' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          {topic.icon} {topic.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className="selected-topics-list">
                 {selectedTopics.map(topic => (
                   <span key={topic.id} className="selected-topic-tag">

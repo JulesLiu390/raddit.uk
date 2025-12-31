@@ -92,6 +92,16 @@ export const getTopicPosts = async (topicId) => {
   return response.data;
 };
 
+export const toggleFollowTopic = async (topicId) => {
+  const response = await api.post(`/topics/${topicId}/follow`);
+  return response.data;
+};
+
+export const getUserFollowedTopics = async (userId) => {
+  const response = await api.get(`/users/${userId}/followed-topics`);
+  return response.data;
+};
+
 export const loginWithGoogle = async (credential) => {
   const response = await api.post('/auth/google', { credential });
   return response.data;

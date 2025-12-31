@@ -50,18 +50,29 @@
 }
 
 .join-btn {
-  background: #0079d3;
+  background: #ff4d4f;
   color: white;
-  border: none;
+  border: 1px solid transparent;
   padding: 8px 24px;
   border-radius: 20px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s;
 }
 
 .join-btn:hover {
-  background: #005fa3;
+  background: #ff7875;
+}
+
+.join-btn.joined {
+  background: #f0f2f5;
+  color: #666;
+  border: 1px solid #d9d9d9;
+}
+
+.join-btn.joined:hover {
+  background: #e6e8eb;
+  color: #333;
 }
 
 .empty-state {

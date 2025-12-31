@@ -5,7 +5,7 @@ import LeftSidebar from '../components/LeftSidebar';
 import Sidebar from '../components/Sidebar';
 import PostCard from '../components/PostCard';
 import CreatePostModal from '../components/CreatePostModal';
-import { getTopic, getTopicPosts, createPost as apiCreatePost } from '../api';
+import { getTopic, getTopicPosts, createPost as apiCreatePost, toggleFollowTopic, getUserFollowedTopics } from '../api';
 import './TopicDetailPage.css';
 
 function TopicDetailPage({ user, onLogout }) {
@@ -16,10 +16,12 @@ function TopicDetailPage({ user, onLogout }) {
   const [error, setError] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
 
   useEffect(() => {
     fetchData();
-  }, [id]);
+  }, [id, user]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -31,11 +33,38 @@ function TopicDetailPage({ user, onLogout }) {
       setTopic(topicData);
       setPosts(postsData);
       document.title = `${topicData.name} - Raddit`;
+
+      if (user) {
+        const followedTopics = await getUserFollowedTopics(user.id);
+        const isFollowed = followedTopics.some(t => t.id === id || t._id === id);
+        setIsFollowing(isFollowed);
+      }
     } catch (err) {
       console.error('Failed to fetch topic data:', err);
       setError('获取话题数据失败');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFollow = async () => {
+    if (!user) {
+      alert('请先登录');
+      return;
+    }
+    setFollowLoading(true);
+    try {
+      const result = await toggleFollowTopic(id);
+      setIsFollowing(result.isFollowing);
+      setTopic(prev => ({
+        ...prev,
+        followers: result.followersCount
+      }));
+    } catch (err) {
+      console.error('Follow topic failed:', err);
+      alert('操作失败');
+    } finally {
+      setFollowLoading(false);
     }
   };
 
@@ -85,10 +114,16 @@ function TopicDetailPage({ user, onLogout }) {
                     <p>{topic.description || '暂无描述'}</p>
                     <div className="topic-stats">
                       <span>{topic.postCount} 帖子</span>
-                      <span>{topic.memberCount} 成员</span>
+                      <span>{topic.followers?.length || topic.memberCount || 0} 成员</span>
                     </div>
                   </div>
-                  <button className="join-btn">加入话题</button>
+                  <button 
+                    className={`join-btn ${isFollowing ? 'joined' : ''}`} 
+                    onClick={handleFollow}
+                    disabled={followLoading}
+                  >
+                    {isFollowing ? '已加入' : '加入话题'}
+                  </button>
                 </div>
 
                 {/* Post List */}

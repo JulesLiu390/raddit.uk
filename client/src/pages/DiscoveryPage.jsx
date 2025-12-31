@@ -96,7 +96,11 @@ function DiscoveryPage({ user, onLogout, onCreatePost }) {
           <div className="discovery-header">
             <BsPersonFill className="icon" />
             <span className="discovery-reason">
-              你关注的 <strong>{item.author}</strong> 发布了新帖
+              {item.reason === 'following_topic' ? (
+                <>来自话题 <strong>{item.topics && item.topics.length > 0 ? item.topics[0].name : '关注的话题'}</strong></>
+              ) : (
+                <>你关注的 <strong>{item.author}</strong> 发布了新帖</>
+              )}
             </span>
             <span className="time">{new Date(item.createdAt).toLocaleString('zh-CN')}</span>
           </div>

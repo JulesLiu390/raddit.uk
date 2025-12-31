@@ -67,18 +67,19 @@ app.get('/api/discovery', async (req, res) => {
     const cursor = req.query.cursor ? new Date(req.query.cursor) : new Date();
 
     // Get current user to find followed posts and users
-    const user = await User.findOne({ googleId: userId }).select('followingUsers followedPosts').lean();
+    const user = await User.findOne({ googleId: userId }).select('followingUsers followedPosts followedTopics').lean();
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     const followedPosts = user.followedPosts || [];
     const followingUsers = user.followingUsers || [];
+    const followedTopics = user.followedTopics || [];
     
     // 修复 1: 将 ObjectId 转换为 String (Message.postId 是 String)
     const followedPostIds = followedPosts.map(id => id.toString());
     // 修复 3: 确保 followingUsers 也是 String，并去除可能存在的空格
     const followingUserIds = followingUsers.map(id => id.toString().trim());
 
-    console.log(`Discovery API: User ${userId} is following ${followingUserIds.length} users and ${followedPostIds.length} posts`);
+    console.log(`Discovery API: User ${userId} is following ${followingUserIds.length} users, ${followedPostIds.length} posts, and ${followedTopics.length} topics`);
 
     // Query 1: New posts from followed users
     const postsPromise = Post.find({
@@ -100,15 +101,36 @@ app.get('/api/discovery', async (req, res) => {
     .sort({ createdAt: -1 })
     .limit(limit);
 
-    const [posts, messages] = await Promise.all([postsPromise, messagesPromise]);
+    // Query 3: New posts from followed topics
+    const topicPostsPromise = Post.find({
+      'topics.id': { $in: followedTopics },
+      createdAt: { $lt: cursor }
+    })
+    .sort({ createdAt: -1 })
+    .limit(limit);
+
+    const [posts, messages, topicPosts] = await Promise.all([postsPromise, messagesPromise, topicPostsPromise]);
     
-    console.log(`Discovery API: Found ${posts.length} posts and ${messages.length} messages`);
+    console.log(`Discovery API: Found ${posts.length} posts, ${messages.length} messages, and ${topicPosts.length} topic posts`);
 
     // Merge and sort
-    const combined = [
-      ...posts.map(p => ({ ...p.toObject(), type: 'post' })),
-      ...messages.map(m => ({ ...m.toObject(), type: 'reply' }))
-    ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const combinedMap = new Map();
+
+    // 优先加入关注人的帖子
+    posts.forEach(p => combinedMap.set(p.id, { ...p.toObject(), type: 'post', reason: 'following_user' }));
+    
+    // 加入关注话题的帖子（如果已存在则跳过，避免重复）
+    topicPosts.forEach(p => {
+      if (!combinedMap.has(p.id)) {
+        combinedMap.set(p.id, { ...p.toObject(), type: 'post', reason: 'following_topic' });
+      }
+    });
+    
+    // 加入回复
+    messages.forEach(m => combinedMap.set(m.id, { ...m.toObject(), type: 'reply' }));
+
+    const combined = Array.from(combinedMap.values())
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     // Slice to limit
     const result = combined.slice(0, limit);
@@ -125,10 +147,11 @@ app.get('/api/discovery', async (req, res) => {
           reason: followingUsers.includes(item.authorId) ? 'following_user' : 'following_post'
         };
       }
-      return {
-        ...item,
-        reason: 'following_user'
-      };
+      // 如果 reason 还没设置（比如来自 postsPromise），默认为 following_user
+      if (!item.reason) {
+        item.reason = 'following_user';
+      }
+      return item;
     }));
 
     res.json({
@@ -138,8 +161,10 @@ app.get('/api/discovery', async (req, res) => {
         userId,
         followingUserIds,
         followedPostIds,
+        followedTopicsCount: followedTopics.length,
         postsFound: posts.length,
         messagesFound: messages.length,
+        topicPostsFound: topicPosts.length,
         cursor
       }
     });
@@ -318,12 +343,38 @@ app.post('/api/posts', async (req, res) => {
       }
       
       // Validate and fetch topic details
-      for (const topicId of req.body.topics) {
-        const topic = await Topic.findById(topicId);
-        if (topic) {
-          topics.push({ id: topic._id, name: topic.name });
-          // Increment post count for each topic
-          await Topic.findByIdAndUpdate(topicId, { $inc: { postCount: 1 } });
+      for (const topicInput of req.body.topics) {
+        // Case 1: Input is just an ID string (legacy or simple ID)
+        if (typeof topicInput === 'string' && mongoose.Types.ObjectId.isValid(topicInput)) {
+          const topic = await Topic.findById(topicInput);
+          if (topic) {
+            topics.push({ id: topic._id, name: topic.name });
+            await Topic.findByIdAndUpdate(topic._id, { $inc: { postCount: 1 } });
+          }
+        } 
+        // Case 2: Input is an object (from new CreatePostModal)
+        else if (typeof topicInput === 'object') {
+           // 2a. Existing topic with ID
+           if (topicInput.id && mongoose.Types.ObjectId.isValid(topicInput.id)) {
+             const topic = await Topic.findById(topicInput.id);
+             if (topic) {
+               topics.push({ id: topic._id, name: topic.name });
+               await Topic.findByIdAndUpdate(topic._id, { $inc: { postCount: 1 } });
+             }
+           }
+           // 2b. New topic to be created (or existing by name)
+           else if (topicInput.name) {
+             let existingTopic = await Topic.findOne({ name: topicInput.name });
+             if (!existingTopic) {
+               existingTopic = await Topic.create({
+                 name: topicInput.name,
+                 creatorId: authorId,
+                 icon: '💬'
+               });
+             }
+             topics.push({ id: existingTopic._id, name: existingTopic.name });
+             await Topic.findByIdAndUpdate(existingTopic._id, { $inc: { postCount: 1 } });
+           }
         }
       }
     }
@@ -1046,6 +1097,66 @@ app.post('/api/upload-image', async (req, res) => {
 
   } catch (err) {
     console.error('Image upload error:', err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 关注/取消关注话题
+app.post('/api/topics/:id/follow', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: '请先登录' });
+    }
+
+    const topicId = req.params.id;
+    const userId = req.user.googleId;
+
+    const topic = await Topic.findById(topicId);
+    if (!topic) return res.status(404).json({ message: 'Topic not found' });
+
+    const user = await User.findOne({ googleId: userId });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // 确保数组存在
+    if (!user.followedTopics) user.followedTopics = [];
+    if (!topic.followers) topic.followers = [];
+
+    const isFollowing = user.followedTopics.some(id => id.toString() === topicId);
+
+    if (isFollowing) {
+      // Unfollow
+      user.followedTopics = user.followedTopics.filter(id => id.toString() !== topicId);
+      topic.followers = topic.followers.filter(id => id !== userId);
+    } else {
+      // Follow
+      // 避免重复添加
+      if (!isFollowing) {
+        user.followedTopics.push(topicId);
+      }
+      if (!topic.followers.includes(userId)) {
+        topic.followers.push(userId);
+      }
+    }
+
+    await user.save();
+    await topic.save();
+
+    res.json({ 
+      isFollowing: !isFollowing, 
+      followersCount: topic.followers.length 
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 获取用户关注的话题列表
+app.get('/api/users/:id/followed-topics', async (req, res) => {
+  try {
+    const user = await User.findOne({ googleId: req.params.id }).populate('followedTopics');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json(user.followedTopics || []);
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
