@@ -72,7 +72,7 @@ const MarkdownComponents = {
   }
 };
 
-function ProfilePage({ user, onLogout }) {
+function ProfilePage({ user, onLogout, onCreatePost }) {
   const { id } = useParams(); // If viewing another user
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -342,9 +342,8 @@ function ProfilePage({ user, onLogout }) {
   ];
 
   return (
-    <div className="profile-page">
-      <Header user={user} onLogout={onLogout} />
-      
+    <div className={`profile-page`}>
+      <Header user={user} onLogout={onLogout} onCreatePost={onCreatePost} />
       <div className="profile-container">
         {/* Header Card */}
         <div className="profile-header-card">

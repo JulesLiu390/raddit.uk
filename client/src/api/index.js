@@ -46,6 +46,11 @@ export const createPost = async (postData) => {
   return response.data;
 };
 
+export const getPost = async (postId) => {
+  const response = await api.get(`/posts/${postId}`);
+  return response.data;
+};
+
 export const toggleFollowPost = async (postId) => {
   const response = await api.post(`/posts/${postId}/follow`);
   return response.data;
@@ -58,6 +63,11 @@ export const getPostMessages = async (postId) => {
 
 export const createMessage = async (postId, messageData) => {
   const response = await api.post(`/posts/${postId}/messages`, messageData);
+  return response.data;
+};
+
+export const reactToMessage = async (messageId, reaction) => {
+  const response = await api.post(`/messages/${messageId}/react`, { reaction });
   return response.data;
 };
 
@@ -114,6 +124,11 @@ export const getUserFollowingUsers = async (userId) => {
 
 export const getUserReactions = async (userId) => {
   const response = await api.get(`/users/${userId}/reactions`);
+  return response.data;
+};
+
+export const getUserInteractions = async (userId) => {
+  const response = await api.get(`/users/${userId}/interactions`);
   return response.data;
 };
 

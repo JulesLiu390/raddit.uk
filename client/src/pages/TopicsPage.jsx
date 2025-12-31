@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { BsTrash } from 'react-icons/bs';
 import Header from '../components/Header';
 import LeftSidebar from '../components/LeftSidebar';
 import Sidebar from '../components/Sidebar';
-import { getTopics } from '../api';
+import { getTopics, deleteTopic } from '../api';
 import './TopicsPage.css';
 
-function TopicsPage({ user, onLogout }) {
+function TopicsPage({ user, onLogout, onCreatePost }) {
   const [topics, setTopics] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -28,12 +29,27 @@ function TopicsPage({ user, onLogout }) {
     }
   };
 
+  const handleDeleteTopic = async (e, topicId) => {
+    e.stopPropagation(); // Prevent navigation
+    if (!window.confirm('确定要删除这个话题吗？相关的帖子可能不会被删除，但话题关联会移除。')) {
+      return;
+    }
+
+    try {
+      await deleteTopic(topicId);
+      setTopics(topics.filter(t => t.id !== topicId));
+    } catch (err) {
+      alert('删除失败: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
   return (
     <div className={`topics-page ${isMenuOpen ? 'menu-open' : ''}`}>
       <Header 
         onToggleMenu={() => setIsMenuOpen(!isMenuOpen)}
         user={user}
         onLogout={onLogout}
+        onCreatePost={onCreatePost}
       />
 
       <main className="main-container">
@@ -64,6 +80,15 @@ function TopicsPage({ user, onLogout }) {
                         <span>{topic.postCount} 帖子</span>
                       </div>
                     </div>
+                    {user && user.role === 'admin' && (
+                      <button 
+                        className="delete-topic-btn"
+                        onClick={(e) => handleDeleteTopic(e, topic.id)}
+                        title="删除话题"
+                      >
+                        <BsTrash />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>

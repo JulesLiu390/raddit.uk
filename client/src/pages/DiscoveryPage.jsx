@@ -21,7 +21,7 @@ const MarkdownComponents = {
   }
 };
 
-function DiscoveryPage({ user, onLogout }) {
+function DiscoveryPage({ user, onLogout, onCreatePost }) {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -157,13 +157,12 @@ function DiscoveryPage({ user, onLogout }) {
 
   return (
     <div className={`discovery-page ${isMenuOpen ? 'menu-open' : ''}`}>
-      <Header user={user} onLogout={onLogout} onToggleMenu={() => setIsMenuOpen(!isMenuOpen)} />
+      <Header user={user} onLogout={onLogout} onCreatePost={onCreatePost} onToggleMenu={() => setIsMenuOpen(!isMenuOpen)} />
       <main className="main-container">
         <div className="content-wrapper">
           <LeftSidebar isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} user={user} />
           <div className="main-content">
             <div className="discovery-feed">
-              <h2 className="page-title">发现</h2>
               
               {!user ? (
                 <div className="login-prompt">

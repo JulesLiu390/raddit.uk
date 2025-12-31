@@ -7,7 +7,13 @@ import ProfilePage from './pages/ProfilePage';
 import TopicDetailPage from './pages/TopicDetailPage';
 import TopicsPage from './pages/TopicsPage';
 import DiscoveryPage from './pages/DiscoveryPage';
-import { loginWithGoogle } from './api';
+import FollowingUsersPage from './pages/FollowingUsersPage';
+import TermsPage from './pages/TermsPage';
+import FavoritesPage from './pages/FavoritesPage';
+import InteractionsPage from './pages/InteractionsPage';
+import NotFoundPage from './pages/NotFoundPage';
+import CreatePostModal from './components/CreatePostModal';
+import { loginWithGoogle, createPost } from './api';
 import './App.css';
 
 const USER_STORAGE_KEY = 'raddit-user';
@@ -25,6 +31,7 @@ function App() {
   });
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const handleGoogleCredential = useCallback(async (credential) => {
     if (!credential) {
@@ -56,16 +63,45 @@ function App() {
     localStorage.removeItem(TOKEN_STORAGE_KEY);
   }, []);
 
+  const handleCreatePost = async (postData) => {
+    try {
+      const newPost = await createPost(postData);
+      setShowCreateModal(false);
+      // Navigate to the new post or refresh the current page if it's the home page
+      // For simplicity and better UX, let's navigate to the new post
+      navigate(`/post/${newPost.id}`);
+    } catch (err) {
+      console.error('创建帖子失败:', err);
+      alert('发布失败，请检查后端连接');
+    }
+  };
+
+  const openCreateModal = () => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    setShowCreateModal(true);
+  };
+
   return (
     <div className="app">
       <Routes>
         <Route 
           path="/" 
-          element={<HomePage user={user} onLogout={handleLogout} />} 
+          element={<HomePage user={user} onLogout={handleLogout} onCreatePost={openCreateModal} />} 
         />
         <Route 
           path="/following" 
-          element={<HomePage user={user} onLogout={handleLogout} type="following" />} 
+          element={<HomePage user={user} onLogout={handleLogout} type="following" onCreatePost={openCreateModal} />} 
+        />
+        <Route 
+          path="/following-users" 
+          element={<FollowingUsersPage user={user} onLogout={handleLogout} onCreatePost={openCreateModal} />} 
+        />
+        <Route 
+          path="/terms" 
+          element={<TermsPage user={user} onLogout={handleLogout} onCreatePost={openCreateModal} />} 
         />
         <Route path="/login" element={
             <LoginPage 
@@ -74,13 +110,23 @@ function App() {
               authError={authError}
             />
           } />
-        <Route path="/post/:id" element={<PostDetailPage user={user} onLogout={handleLogout} />} />
-        <Route path="/profile" element={<ProfilePage user={user} onLogout={handleLogout} />} />
-        <Route path="/profile/:id" element={<ProfilePage user={user} onLogout={handleLogout} />} />
-                <Route path="/topics" element={<TopicsPage user={user} onLogout={handleLogout} />} />
-        <Route path="/discovery" element={<DiscoveryPage user={user} onLogout={handleLogout} />} />
-        <Route path="/topic/:id" element={<TopicDetailPage user={user} onLogout={handleLogout} />} />
+        <Route path="/post/:id" element={<PostDetailPage user={user} onLogout={handleLogout} onCreatePost={openCreateModal} />} />
+        <Route path="/profile" element={<ProfilePage user={user} onLogout={handleLogout} onCreatePost={openCreateModal} />} />
+        <Route path="/profile/:id" element={<ProfilePage user={user} onLogout={handleLogout} onCreatePost={openCreateModal} />} />
+        <Route path="/notifications" element={<InteractionsPage user={user} onLogout={handleLogout} onCreatePost={openCreateModal} />} />
+        <Route path="/topics" element={<TopicsPage user={user} onLogout={handleLogout} onCreatePost={openCreateModal} />} />
+        <Route path="/discovery" element={<DiscoveryPage user={user} onLogout={handleLogout} onCreatePost={openCreateModal} />} />
+        <Route path="/topic/:id" element={<TopicDetailPage user={user} onLogout={handleLogout} onCreatePost={openCreateModal} />} />
+        <Route path="*" element={<NotFoundPage user={user} onLogout={handleLogout} onCreatePost={openCreateModal} />} />
       </Routes>
+
+      {showCreateModal && (
+        <CreatePostModal 
+          user={user}
+          onClose={() => setShowCreateModal(false)} 
+          onSubmit={handleCreatePost} 
+        />
+      )}
     </div>
   );
 }

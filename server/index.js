@@ -193,6 +193,9 @@ app.post('/api/topics', async (req, res) => {
 // 获取单个话题详情
 app.get('/api/topics/:id', async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ message: 'Topic not found' });
+    }
     const topic = await Topic.findById(req.params.id);
     if (!topic) return res.status(404).json({ message: 'Topic not found' });
     res.json(topic);
@@ -204,6 +207,9 @@ app.get('/api/topics/:id', async (req, res) => {
 // 获取特定话题下的帖子
 app.get('/api/topics/:id/posts', async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ message: 'Topic not found' });
+    }
     // Find posts where topics array contains an object with id matching req.params.id
     // Since we store topics as [{id: ObjectId, name: String}], we query 'topics.id'
     const posts = await Post.find({ 'topics.id': req.params.id }).sort({ createdAt: -1 });
@@ -219,6 +225,9 @@ app.get('/api/topics/:id/posts', async (req, res) => {
 // 增加帖子热度 (点击)
 app.post('/api/posts/:id/view', async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
     const post = await Post.findByIdAndUpdate(
       req.params.id,
       { $inc: { heat: 1 } },
@@ -340,6 +349,9 @@ app.post('/api/posts', async (req, res) => {
 // 获取单个帖子
 app.get('/api/posts/:id', async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
     const post = await Post.findById(req.params.id);
     if (!post) return res.status(404).json({ message: 'Post not found' });
     
@@ -358,6 +370,9 @@ app.post('/api/posts/:id/follow', async (req, res) => {
     }
 
     const postId = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(postId)) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
     const userId = req.user.googleId;
 
     const post = await Post.findById(postId);
@@ -395,6 +410,9 @@ app.post('/api/posts/:id/follow', async (req, res) => {
 // 获取帖子的所有消息/回答
 app.get('/api/posts/:postId/messages', async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.postId)) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
     const messages = await Message.find({ postId: req.params.postId }).sort({ createdAt: -1 });
     const enrichedMessages = await enrichMessagesWithUser(messages);
     res.json(enrichedMessages);
@@ -406,6 +424,9 @@ app.get('/api/posts/:postId/messages', async (req, res) => {
 // 创建新消息/回答（支持楼中楼最多 3 层：1=顶层，2=回复，3=回复的回复）
 app.post('/api/posts/:postId/messages', async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.postId)) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
     const clientIp = getClientIP(req);
     const parentId = req.body.parentId || null;
 
@@ -838,6 +859,131 @@ app.post('/api/react', async (req, res) => {
   }
 });
 
+// 获取用户收到的互动 (回复和点赞)
+app.get('/api/users/:id/interactions', async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const interactions = [];
+
+    // 1. 获取对我发布的帖子的回复 (Top-level comments)
+    const myPosts = await Post.find({ authorId: userId }).select('_id title reactions createdAt');
+    const myPostIds = myPosts.map(p => p._id.toString());
+    const myPostMap = new Map(myPosts.map(p => [p._id.toString(), p]));
+
+    const postReplies = await Message.find({
+      postId: { $in: myPostIds },
+      parentId: null,
+      authorId: { $ne: userId } // Exclude self
+    }).sort({ createdAt: -1 }).limit(50);
+
+    for (const reply of postReplies) {
+      const post = myPostMap.get(reply.postId);
+      interactions.push({
+        type: 'reply',
+        targetType: 'post',
+        targetId: reply.postId,
+        targetContent: post ? post.title : 'Unknown Post',
+        actorId: reply.authorId,
+        content: reply.content,
+        createdAt: reply.createdAt,
+        postId: reply.postId
+      });
+    }
+
+    // 2. 获取对我的评论的回复 (Nested replies)
+    const commentReplies = await Message.find({
+      replyToUserId: userId,
+      authorId: { $ne: userId }
+    }).sort({ createdAt: -1 }).limit(50);
+
+    for (const reply of commentReplies) {
+      interactions.push({
+        type: 'reply',
+        targetType: 'comment',
+        targetId: reply.parentId,
+        targetContent: '...', // Content of the parent comment is hard to get efficiently without join
+        actorId: reply.authorId,
+        content: reply.content,
+        createdAt: reply.createdAt,
+        postId: reply.postId
+      });
+    }
+
+    // 3. 获取对我帖子的点赞/反应
+    // 注意：由于 Schema 中没有存储反应的时间，我们只能使用帖子创建时间作为近似，或者就放在列表底部
+    // 这里为了展示，我们假设它是最近发生的，或者就按帖子时间排
+    for (const post of myPosts) {
+      if (!post.reactions) continue;
+      for (const [emoji, userIds] of post.reactions) {
+        for (const reactorId of userIds) {
+          if (reactorId === userId) continue;
+          interactions.push({
+            type: 'reaction',
+            targetType: 'post',
+            targetId: post._id,
+            targetContent: post.title,
+            actorId: reactorId,
+            content: emoji,
+            createdAt: post.createdAt, // FIXME: Schema limitation
+            postId: post._id
+          });
+        }
+      }
+    }
+
+    // 4. 获取对我评论的点赞/反应
+    const myMessages = await Message.find({
+      authorId: userId,
+      reactions: { $ne: {} }
+    }).select('_id content reactions postId createdAt');
+
+    for (const msg of myMessages) {
+      if (!msg.reactions) continue;
+      for (const [emoji, userIds] of msg.reactions) {
+        for (const reactorId of userIds) {
+          if (reactorId === userId) continue;
+          interactions.push({
+            type: 'reaction',
+            targetType: 'comment',
+            targetId: msg._id,
+            targetContent: msg.content,
+            actorId: reactorId,
+            content: emoji,
+            createdAt: msg.createdAt, // FIXME: Schema limitation
+            postId: msg.postId
+          });
+        }
+      }
+    }
+
+    // Sort by date desc
+    interactions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // Limit to 50
+    const limitedInteractions = interactions.slice(0, 50);
+
+    // Enrich with actor info
+    const actorIds = [...new Set(limitedInteractions.map(i => i.actorId))];
+    const actors = await User.find({ googleId: { $in: actorIds } }).select('googleId name picture');
+    const actorMap = new Map(actors.map(u => [u.googleId, u]));
+
+    const enrichedInteractions = limitedInteractions.map(i => {
+      const actor = actorMap.get(i.actorId);
+      return {
+        ...i,
+        actorName: actor ? actor.name : 'Unknown',
+        actorAvatar: actor ? actor.picture : null
+      };
+    });
+
+    res.json(enrichedInteractions);
+
+  } catch (err) {
+    console.error('Interactions error:', err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // 图片上传代理端点
 app.post('/api/upload-image', async (req, res) => {
   try {
@@ -971,7 +1117,7 @@ async function enrichContentWithUser(items) {
   if (authorIds.length === 0) return items;
   
   // Fetch users
-  const users = await User.find({ googleId: { $in: authorIds } }).select('googleId name picture bio');
+  const users = await User.find({ googleId: { $in: authorIds } }).select('googleId name picture bio role');
   const userMap = new Map(users.map(u => [u.googleId, u]));
   
   // Map items
@@ -988,6 +1134,7 @@ async function enrichContentWithUser(items) {
       const user = userMap.get(itemObj.authorId);
       itemObj.author = user.name;
       itemObj.authorAvatar = user.picture;
+      itemObj.authorRole = user.role;
       if (itemObj.hasOwnProperty('authorBio')) {
         itemObj.authorBio = user.bio;
       }
@@ -1030,7 +1177,7 @@ async function enrichMessagesWithUser(messages) {
   
   let userMap = new Map();
   if (userIds.size > 0) {
-    const users = await User.find({ googleId: { $in: [...userIds] } }).select('googleId name picture bio');
+    const users = await User.find({ googleId: { $in: [...userIds] } }).select('googleId name picture bio role');
     userMap = new Map(users.map(u => [u.googleId, u]));
   }
   
@@ -1048,6 +1195,7 @@ async function enrichMessagesWithUser(messages) {
       msgObj.author = user.name;
       msgObj.authorAvatar = user.picture;
       msgObj.authorBio = user.bio;
+      msgObj.authorRole = user.role;
     }
     
     // Update reply target name

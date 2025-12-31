@@ -4,31 +4,18 @@ import Header from '../components/Header';
 import LeftSidebar from '../components/LeftSidebar';
 import Sidebar from '../components/Sidebar';
 import PostCard from '../components/PostCard';
-import CreatePostModal from '../components/CreatePostModal';
-import { getPosts, createPost as apiCreatePost, getUserFollowing } from '../api';
+import { getPosts, getUserFollowing } from '../api';
 import './HomePage.css';
 
-function HomePage({ user, onLogout, type = 'all' }) {
+function HomePage({ user, onLogout, onCreatePost, type = 'all' }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
     document.title = type === 'following' ? '我关注的问题 - Raddit' : 'Raddit主页';
   }, [type]);
-
-  const handleCreatePost = async (postData) => {
-    try {
-      const newPost = await apiCreatePost(postData);
-      setPosts([newPost, ...posts]);
-      setShowCreateModal(false);
-    } catch (err) {
-      console.error('创建帖子失败:', err);
-      setError('发布失败，请检查后端连接');
-    }
-  };
 
   const handleSearch = (query) => {
     console.log('搜索:', query);
@@ -79,7 +66,7 @@ function HomePage({ user, onLogout, type = 'all' }) {
     <div className={`home-page ${isMenuOpen ? 'menu-open' : ''}`}>
       <Header 
         onSearch={handleSearch} 
-        onCreatePost={() => setShowCreateModal(true)} 
+        onCreatePost={onCreatePost} 
         onToggleMenu={() => setIsMenuOpen(!isMenuOpen)}
         user={user}
         onLogout={onLogout}
@@ -95,9 +82,9 @@ function HomePage({ user, onLogout, type = 'all' }) {
             {/* 帖子列表 */}
             <div className="post-list">
               {/* 列表头部提示 */}
-              <div className="list-header">
-                <span className="list-header-tag">关注</span>
-                <span className="list-header-text">Raddit 12 月网络侵权举报受理处置情况</span>
+              <div className="list-header" onClick={() => window.open('/terms', '_blank')} style={{ cursor: 'pointer' }}>
+                <span className="list-header-tag">公告</span>
+                <span className="list-header-text">Raddit 用户协议与隐私政策</span>
               </div>
 
               {loading && (
@@ -119,7 +106,7 @@ function HomePage({ user, onLogout, type = 'all' }) {
                 <div className="empty-state">
                   <span className="empty-icon"><BsInbox /></span>
                   <p>{type === 'following' ? '还没有关注的问题' : '还没有帖子，来发布第一篇吧！'}</p>
-                  {type !== 'following' && <button onClick={() => setShowCreateModal(true)}>发布帖子</button>}
+                  {type !== 'following' && <button onClick={onCreatePost}>发布帖子</button>}
                 </div>
               )}
 
@@ -140,15 +127,6 @@ function HomePage({ user, onLogout, type = 'all' }) {
           <Sidebar user={user} />
         </div>
       </main>
-
-      {/* 创建帖子弹窗 */}
-      {showCreateModal && (
-        <CreatePostModal 
-          user={user}
-          onClose={() => setShowCreateModal(false)} 
-          onSubmit={handleCreatePost} 
-        />
-      )}
     </div>
   );
 }

@@ -3,6 +3,8 @@ import MDEditor, { commands } from '@uiw/react-md-editor';
 import { selectAndUploadImage, uploadImageToImgBB } from '../utils/imageUpload';
 import { getTopics, createTopic } from '../api';
 import { BsPlus, BsX } from 'react-icons/bs';
+import PinyinMatch from 'pinyin-match';
+import { pinyin } from 'pinyin-pro';
 import '@uiw/react-md-editor/markdown-editor.css';
 import '@uiw/react-markdown-preview/markdown.css';
 import './CreatePostModal.css';
@@ -31,13 +33,13 @@ const imageUploadCommand = {
   },
 };
 
-function CreatePostModal({ onClose, onSubmit, user }) {
+function CreatePostModal({ onClose, onSubmit, user, initialTopic }) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [topics, setTopics] = useState([]);
   const [selectedTopics, setSelectedTopics] = useState([]);
-  const [showNewTopicInput, setShowNewTopicInput] = useState(false);
-  const [newTopicName, setNewTopicName] = useState('');
+  const [topicSearch, setTopicSearch] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [loadingTopics, setLoadingTopics] = useState(false);
 
   useEffect(() => {
@@ -49,6 +51,13 @@ function CreatePostModal({ onClose, onSubmit, user }) {
     try {
       const data = await getTopics();
       setTopics(data);
+      
+      if (initialTopic) {
+        const preSelected = data.find(t => t.id === initialTopic || t.id === parseInt(initialTopic));
+        if (preSelected) {
+          setSelectedTopics([preSelected]);
+        }
+      }
     } catch (err) {
       console.error('Failed to load topics', err);
     } finally {
@@ -56,32 +65,72 @@ function CreatePostModal({ onClose, onSubmit, user }) {
     }
   };
 
-  const handleTopicToggle = (topicId) => {
-    if (selectedTopics.includes(topicId)) {
-      setSelectedTopics(selectedTopics.filter(id => id !== topicId));
-    } else {
-      if (selectedTopics.length >= 3) {
-        alert('最多只能选择 3 个话题');
-        return;
-      }
-      setSelectedTopics([...selectedTopics, topicId]);
+  const handleSelectTopic = (topic) => {
+    if (selectedTopics.find(t => t.id === topic.id)) return;
+    
+    if (selectedTopics.length >= 3) {
+      alert('最多只能选择 3 个话题');
+      return;
     }
+    
+    setSelectedTopics([...selectedTopics, topic]);
+    setTopicSearch('');
+    setShowSuggestions(false);
   };
 
-  const handleCreateNewTopic = async () => {
-    if (!newTopicName.trim()) return;
-    try {
-      const newTopic = await createTopic({ name: newTopicName, icon: '💬' });
-      setTopics([...topics, newTopic]);
-      if (selectedTopics.length < 3) {
-        setSelectedTopics([...selectedTopics, newTopic.id]);
-      }
-      setShowNewTopicInput(false);
-      setNewTopicName('');
-    } catch (err) {
-      alert('创建话题失败: ' + (err.response?.data?.message || err.message));
-    }
+  const handleRemoveTopic = (topicId) => {
+    setSelectedTopics(selectedTopics.filter(t => t.id !== topicId));
   };
+
+  const handleCreateTopic = () => {
+    const name = topicSearch.trim();
+    if (!name) return;
+    
+    // Check if already exists in fetched topics
+    const existing = topics.find(t => t.name.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      handleSelectTopic(existing);
+      return;
+    }
+
+    // Check if already in selectedTopics as a new topic
+    const existingNew = selectedTopics.find(t => t.name.toLowerCase() === name.toLowerCase() && t.isNew);
+    if (existingNew) return;
+
+    // Create a temporary topic object
+    const newTopic = { 
+      id: `new-${Date.now()}`, 
+      name, 
+      icon: '💬', 
+      isNew: true 
+    };
+    
+    handleSelectTopic(newTopic);
+  };
+
+  const filteredTopics = topics.filter(topic => {
+    if (!topicSearch) return false;
+    if (selectedTopics.find(t => t.id === topic.id)) return false;
+
+    // 1. 标准匹配 (拼音/汉字/首字母)
+    const match = PinyinMatch.match(topic.name, topicSearch);
+    if (match) return true;
+
+    // 2. 同音字模糊搜索 (将输入转换为拼音后再匹配)
+    // 例如：输入 "至" (zhi) -> 匹配 "滞纳" (zhi na)
+    if (/[\u4e00-\u9fa5]/.test(topicSearch)) {
+      try {
+        const inputPinyin = pinyin(topicSearch, { toneType: 'none', type: 'array' }).join('');
+        if (inputPinyin && inputPinyin !== topicSearch) {
+           return PinyinMatch.match(topic.name, inputPinyin);
+        }
+      } catch (e) {
+        // 忽略转换错误
+      }
+    }
+
+    return false;
+  });
 
   // 处理粘贴图片
   const handlePaste = async (e) => {
@@ -134,7 +183,7 @@ function CreatePostModal({ onClose, onSubmit, user }) {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (title.trim().length < 10) {
@@ -146,11 +195,27 @@ function CreatePostModal({ onClose, onSubmit, user }) {
       alert('内容不少于5个字');
       return;
     }
+
+    // Process topics: create new ones if necessary
+    const finalTopicIds = [];
+    for (const topic of selectedTopics) {
+      if (topic.isNew) {
+        try {
+          const created = await createTopic({ name: topic.name, icon: topic.icon });
+          finalTopicIds.push(created.id);
+        } catch (err) {
+          alert(`创建话题 "${topic.name}" 失败: ${err.message}`);
+          return; // Stop submission
+        }
+      } else {
+        finalTopicIds.push(topic.id);
+      }
+    }
     
     const postData = {
       title: title.trim(),
       content: content.trim(),
-      topics: selectedTopics
+      topics: finalTopicIds
     };
 
     if (user) {
@@ -192,44 +257,72 @@ function CreatePostModal({ onClose, onSubmit, user }) {
           {/* Topic Selection */}
           <div className="form-group topic-selector-group">
             <label>选择话题 (最多3个):</label>
-            <div className="topic-tags-container">
-              {topics.map(topic => (
-                <button
-                  key={topic.id}
-                  type="button"
-                  className={`topic-tag ${selectedTopics.includes(topic.id) ? 'active' : ''}`}
-                  onClick={() => handleTopicToggle(topic.id)}
-                >
-                  {topic.icon} {topic.name}
-                </button>
-              ))}
-              
-              {!showNewTopicInput ? (
-                <button 
-                  type="button" 
-                  className="topic-tag new-topic-btn"
-                  onClick={() => setShowNewTopicInput(true)}
-                >
-                  <BsPlus /> 新话题
-                </button>
-              ) : (
-                <div className="new-topic-input-wrapper">
-                  <input 
-                    type="text" 
-                    placeholder="话题名称" 
-                    value={newTopicName}
-                    onChange={e => setNewTopicName(e.target.value)}
-                    className="new-topic-input"
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleCreateNewTopic();
-                      }
-                    }}
-                  />
-                  <button type="button" onClick={handleCreateNewTopic} className="confirm-btn">确定</button>
-                  <button type="button" onClick={() => setShowNewTopicInput(false)} className="cancel-btn-small"><BsX /></button>
+            
+            <div className="topic-selector-wrapper">
+              <div className="selected-topics-list">
+                {selectedTopics.map(topic => (
+                  <span key={topic.id} className="selected-topic-tag">
+                    {topic.icon} {topic.name}
+                    <button 
+                      type="button" 
+                      className="remove-topic-btn"
+                      onClick={() => handleRemoveTopic(topic.id)}
+                    >
+                      <BsX />
+                    </button>
+                  </span>
+                ))}
+                
+                {selectedTopics.length < 3 && (
+                  <div className="topic-input-container">
+                    <input
+                      type="text"
+                      className="topic-search-input"
+                      placeholder={selectedTopics.length === 0 ? "搜索或创建话题..." : "添加更多话题..."}
+                      value={topicSearch}
+                      onChange={(e) => {
+                        setTopicSearch(e.target.value);
+                        setShowSuggestions(true);
+                      }}
+                      onFocus={() => setShowSuggestions(true)}
+                      onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          if (filteredTopics.length > 0) {
+                            handleSelectTopic(filteredTopics[0]);
+                          } else {
+                            handleCreateTopic();
+                          }
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {showSuggestions && topicSearch && (
+                <div className="topic-suggestions-dropdown">
+                  {filteredTopics.map(topic => (
+                    <div 
+                      key={topic.id} 
+                      className="suggestion-item"
+                      onClick={() => handleSelectTopic(topic)}
+                    >
+                      <span className="topic-icon">{topic.icon}</span>
+                      <span className="topic-name">{topic.name}</span>
+                    </div>
+                  ))}
+                  
+                  {topicSearch.trim() && !filteredTopics.find(t => t.name.toLowerCase() === topicSearch.trim().toLowerCase()) && (
+                    <div 
+                      className="suggestion-item create-new"
+                      onClick={handleCreateTopic}
+                    >
+                      <BsPlus className="icon" />
+                      <span>创建话题: <strong>{topicSearch}</strong></span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

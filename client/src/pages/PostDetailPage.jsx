@@ -210,6 +210,22 @@ const CommentNode = ({
               >
                 {message.author}
               </span>
+              {message.authorRole === 'admin' && (
+                <span style={{ 
+                  marginLeft: '4px', 
+                  backgroundColor: '#52c41a', 
+                  color: '#fff', 
+                  fontSize: '10px', 
+                  padding: '0 4px', 
+                  borderRadius: '4px',
+                  display: 'inline-block',
+                  verticalAlign: 'middle',
+                  fontWeight: 'normal',
+                  lineHeight: '1.4'
+                }}>
+                  权蛆
+                </span>
+              )}
               {message.isVerified && <BsCheckCircleFill className="verified-badge" />}
               {message.replyToUserId && (
                 <span className="reply-to">回复 @{message.replyToName || message.replyToUserId}</span>
@@ -237,6 +253,22 @@ const CommentNode = ({
               style={{ cursor: message.authorId ? 'pointer' : 'default' }}
             >
               {message.author}
+              {message.authorRole === 'admin' && (
+                <span style={{ 
+                  marginLeft: '6px', 
+                  backgroundColor: '#52c41a', 
+                  color: '#fff', 
+                  fontSize: '11px', 
+                  padding: '0 4px', 
+                  borderRadius: '4px',
+                  display: 'inline-block',
+                  verticalAlign: 'middle',
+                  fontWeight: 'normal',
+                  lineHeight: '1.4'
+                }}>
+                  权蛆
+                </span>
+              )}
               {message.isVerified && <BsCheckCircleFill className="verified-badge" />}
             </div>
             {message.replyToUserId && (
@@ -411,7 +443,7 @@ const CommentNode = ({
   );
 };
 
-function PostDetailPage({ user, onLogout }) {
+function PostDetailPage({ user, onLogout, onCreatePost }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const [post, setPost] = useState(null);
@@ -494,11 +526,13 @@ function PostDetailPage({ user, onLogout }) {
 
   const fetchPost = async () => {
     try {
-      const response = await fetch(`https://raddit.uk:8443/api/posts/${id}`);
-      const data = await response.json();
+      const data = await getPost(id);
       setPost(data);
     } catch (err) {
-      console.error('获取帖子失败:', err);
+      console.error('Failed to fetch post:', err);
+      if (err.response && err.response.status === 404) {
+        navigate('/404');
+      }
     } finally {
       setLoading(false);
     }
@@ -871,39 +905,38 @@ function PostDetailPage({ user, onLogout }) {
   }
 
   return (
-    <div className="post-detail-page">
-      <Header user={user} onLogout={onLogout} />
-      
-      <ReactionBurst 
-        x={burstState.x} 
-        y={burstState.y} 
-        isActive={burstState.active} 
-        imageSrc={CUSTOM_REACTION_URL}
-        onComplete={() => setBurstState(prev => ({ ...prev, active: false }))}
-      />
+    <div className={`post-detail-page`}>
+      <Header user={user} onLogout={onLogout} onCreatePost={onCreatePost} />
+      <main className="main-container">
+        <ReactionBurst 
+          x={burstState.x} 
+          y={burstState.y} 
+          isActive={burstState.active} 
+          imageSrc={CUSTOM_REACTION_URL}
+          onComplete={() => setBurstState(prev => ({ ...prev, active: false }))}
+        />
 
-      {/* 滚动时显示的标题栏 */}
-      {isScrolled && (
-        <div className="floating-title-bar">
-          <div className="floating-title-content">
-            <span className="floating-title-text">{post.title}</span>
-            <div className="floating-actions">
-              <button 
-                className={`floating-btn primary ${followingPost ? 'following' : ''}`}
-                onClick={handleFollowPost}
-              >
-                {followingPost ? '已关注' : '关注问题'}
-              </button>
-              <button className="floating-btn secondary" onClick={() => setShowAnswerForm(!showAnswerForm)}>
-                <BsPencil style={{ marginRight: '4px' }} />
-                写回答
-              </button>
+        {/* 滚动时显示的标题栏 */}
+        {isScrolled && (
+          <div className="floating-title-bar">
+            <div className="floating-title-content">
+              <span className="floating-title-text">{post.title}</span>
+              <div className="floating-actions">
+                <button 
+                  className={`floating-btn primary ${followingPost ? 'following' : ''}`}
+                  onClick={handleFollowPost}
+                >
+                  {followingPost ? '已关注' : '关注问题'}
+                </button>
+                <button className="floating-btn secondary" onClick={() => setShowAnswerForm(!showAnswerForm)}>
+                  <BsPencil style={{ marginRight: '4px' }} />
+                  写回答
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      <main className="post-detail-container">
         <div className="post-detail-main">
           {/* 标题区域 */}
           <div className="post-header">
@@ -953,6 +986,21 @@ function PostDetailPage({ user, onLogout }) {
                     style={{ cursor: post.authorId ? 'pointer' : 'default' }}
                   >
                     {post.author}
+                    {post.authorRole === 'admin' && (
+                      <span style={{ 
+                        marginLeft: '8px', 
+                        backgroundColor: '#52c41a', 
+                        color: '#fff', 
+                        fontSize: '12px', 
+                        padding: '0 6px', 
+                        borderRadius: '4px',
+                        display: 'inline-block',
+                        verticalAlign: 'middle',
+                        fontWeight: 'normal'
+                      }}>
+                        权蛆
+                      </span>
+                    )}
                   </div>
                   <div className="post-time" style={{ fontSize: '14px', color: '#8590a6', marginTop: '4px' }}>
                     发布于 {new Date(post.createdAt).toLocaleString('zh-CN')}
@@ -1170,7 +1218,7 @@ function PostDetailPage({ user, onLogout }) {
         </div>
 
         {/* 右侧边栏 */}
-        <Sidebar user={user} />
+        <Sidebar user={user} showUserCard={false} showHotPosts={false} />
       </main>
     </div>
   );

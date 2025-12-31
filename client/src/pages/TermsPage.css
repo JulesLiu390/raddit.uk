@@ -1,0 +1,40 @@
+.terms-page {
+  padding-top: 60px;
+  min-height: 100vh;
+  background-color: #fdf6fb;
+  display: flex;
+  justify-content: center;
+}
+
+.terms-container {
+  width: 800px;
+  margin: 20px;
+  background: white;
+  padding: 40px;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(26, 26, 26, 0.1);
+}
+
+.terms-container h1 {
+  font-size: 24px;
+  margin-bottom: 30px;
+  text-align: center;
+  color: #333;
+}
+
+.terms-content section {
+  margin-bottom: 30px;
+}
+
+.terms-content h2 {
+  font-size: 18px;
+  margin-bottom: 15px;
+  color: #333;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 10px;
+}
+
+.terms-content p {
+  line-height: 1.6;
+  color: #666;
+}

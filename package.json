@@ -2,6 +2,7 @@
   "dependencies": {
     "canvas-confetti": "^1.9.4",
     "jsonwebtoken": "^9.0.3",
-    "party-js": "^2.2.0"
+    "party-js": "^2.2.0",
+    "pinyin-match": "^1.2.10"
   }
 }
