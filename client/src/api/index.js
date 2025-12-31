@@ -179,4 +179,14 @@ export const getDiscoveryFeed = async (cursor = null) => {
   return response.data;
 };
 
+export const getNotificationCount = async () => {
+  const response = await api.get('/notifications/count');
+  return response.data;
+};
+
+export const markNotificationsRead = async () => {
+  const response = await api.post('/notifications/read');
+  return response.data;
+};
+
 export default api;

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import LeftSidebar from '../components/LeftSidebar';
 import Sidebar from '../components/Sidebar';
-import { getUserInteractions } from '../api';
+import { getUserInteractions, markNotificationsRead } from '../api';
 import './HomePage.css'; // Use HomePage layout styles
 import './ProfilePage.css'; // Reuse profile styles
 
@@ -21,6 +21,9 @@ function InteractionsPage({ user, onLogout, onCreatePost }) {
 
     const fetchData = async () => {
       try {
+        // 只有当页面加载时，才标记为已读
+        await markNotificationsRead();
+        
         const data = await getUserInteractions(user.id);
         setItems(data);
       } catch (err) {

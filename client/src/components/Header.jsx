@@ -1,13 +1,47 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { BsSearch, BsPencilSquare, BsBell, BsList } from 'react-icons/bs';
+import { getNotificationCount } from '../api';
 import logo from '../assets/logo.png';
 import './Header.css';
 
 function Header({ onSearch, onCreatePost, onToggleMenu, user, onLogout }) {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('hot');
+  const [unreadCount, setUnreadCount] = useState(0);
   const userInitial = user?.name?.[0]?.toUpperCase() || 'U';
+
+  // 定期获取未读数
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchCount = async () => {
+      try {
+        const data = await getNotificationCount();
+        console.log('Notification count:', data.count);
+        setUnreadCount(data.count);
+      } catch (err) {
+        console.error('Failed to fetch notifications', err);
+      }
+    };
+
+    fetchCount();
+    // 每 60 秒轮询一次
+    const interval = setInterval(fetchCount, 60000);
+    return () => clearInterval(interval);
+  }, [user]);
+
+  const handleBellClick = () => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    
+    // 只负责跳转，不负责清除计数
+    navigate('/notifications');
+  };
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -70,9 +104,9 @@ function Header({ onSearch, onCreatePost, onToggleMenu, user, onLogout }) {
             <span>发新帖</span>
           </button>
 
-          <button className="icon-btn" title="消息">
+          <button className="icon-btn" title="消息" onClick={handleBellClick}>
             <BsBell />
-            <span className="badge">3</span>
+            {unreadCount > 0 && location.pathname !== '/notifications' && <span className="badge">{unreadCount > 99 ? '99+' : unreadCount}</span>}
           </button>
 
           {!user ? (

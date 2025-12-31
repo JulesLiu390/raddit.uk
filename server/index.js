@@ -518,12 +518,28 @@ app.post('/api/posts/:postId/messages', async (req, res) => {
       authorId: authorId,
       parentId: parentId,
       depth: depth,
-      replyToUserId: parent ? (parent.authorId || parent.author || '') : null,
+      replyToUserId: parent ? (parent.authorId || '') : null, // 修复：只使用 authorId，不使用 author (name)
       replyToName: parent ? (parent.author || '') : null,
       authorBio: '',
       isVerified: false,
       upvotes: 0
     });
+
+    // 如果是直接回复帖子（parentId 为空），我们需要找到帖子的作者并设置 replyToUserId
+    if (!parentId) {
+      const post = await Post.findById(req.params.postId);
+      if (post && post.authorId) {
+        // 只有当帖子作者不是当前回复者时，才设置 replyToUserId（虽然前端可能不显示，但用于通知计数）
+        // 或者我们可以保持 replyToUserId 为 null，依靠 postId 查询（目前的逻辑）
+        // 但为了保险，我们可以显式设置它，这样查询条件 { replyToUserId: userId } 就能覆盖所有情况
+        if (post.authorId !== authorId) {
+           // 注意：Message Schema 中 replyToUserId 定义为 String
+           // 但我们最好不要在这里修改它，因为 replyToUserId 通常指“回复某条评论的人”
+           // 如果我们把它用于“回复帖子的人”，可能会混淆
+           // 让我们保持原样，依靠 postId 查询
+        }
+      }
+    }
 
     const savedMessage = await newMessage.save();
     
@@ -533,6 +549,106 @@ app.post('/api/posts/:postId/messages', async (req, res) => {
     res.status(201).json(savedMessage);
   } catch (err) {
     res.status(400).json({ message: err.message });
+  }
+});
+
+// 获取未读消息计数
+app.get('/api/notifications/count', async (req, res) => {
+  try {
+    if (!req.user) {
+      console.log('Notification Count: User not logged in');
+      return res.json({ count: 0 });
+    }
+
+    const userId = req.user.googleId;
+    const user = await User.findOne({ googleId: userId });
+    if (!user) {
+      console.log('Notification Count: User not found in DB');
+      return res.json({ count: 0 });
+    }
+
+    // 如果数据库中没有该字段，默认为 1970 年，这样会显示所有历史消息为未读
+    // 或者我们可以默认为当前时间，这样只有新消息才提示？
+    // 通常第一次上线功能，用户可能希望看到未读？或者不希望看到一大堆旧的？
+    // 让我们默认为 0 (1970) 以便测试
+    const lastRead = user.lastReadInteractions || new Date(0);
+
+    // 先找到用户的所有帖子 ID
+    const userPosts = await Post.find({ authorId: userId }).select('_id');
+    const userPostIds = userPosts.map(p => p._id.toString());
+
+    // 调试：打印用户的所有帖子 ID
+    // console.log(`User ${user.name} has posts:`, userPostIds);
+
+    const count = await Message.countDocuments({
+      $or: [
+        { replyToUserId: userId }, // 直接回复用户（回复评论）
+        { postId: { $in: userPostIds }, authorId: { $ne: userId }, parentId: null } // 回复用户的帖子（且是顶层回复，排除回复评论的情况以免重复计数）
+        // 注意：如果有人回复了用户帖子下的评论（而该评论不是用户发的），用户是否应该收到通知？
+        // 通常是的，作为楼主，应该收到所有回复的通知？或者只收到直接回复帖子的？
+        // 现在的逻辑是：只要是在我的帖子里，且不是我发的，都算。
+        // 但是上面的条件 { postId: { $in: userPostIds } } 会包含所有回复（包括楼中楼）。
+        // 如果楼中楼是回复别人的，楼主也收到通知吗？
+        // 让我们放宽条件，只要是我的帖子下的新消息，都算通知（除了我自己发的）。
+      ],
+      createdAt: { $gt: lastRead }
+    });
+    
+    // 修正查询逻辑：
+    // 1. 回复给我的评论 (replyToUserId = me)
+    // 2. 回复给我的帖子 (postId in myPosts)，但排除掉情况1（避免重复），也排除掉我自己发的
+    
+    const realCount = await Message.countDocuments({
+      $and: [
+        { createdAt: { $gt: lastRead } },
+        { authorId: { $ne: userId } }, // 排除自己发的
+        {
+          $or: [
+            { replyToUserId: userId }, // 回复我的评论
+            { postId: { $in: userPostIds } } // 在我的帖子里
+          ]
+        }
+      ]
+    });
+
+    // 添加详细日志以便调试
+    if (realCount === 0) {
+       // 查一下最近的一条消息时间，看看为什么没匹配上
+       const latestMsg = await Message.findOne({
+          $or: [
+            { replyToUserId: userId },
+            { postId: { $in: userPostIds }, authorId: { $ne: userId } }
+          ]
+       }).sort({ createdAt: -1 });
+       
+       if (latestMsg) {
+         console.log(`Latest relevant message for ${user.name} was at ${latestMsg.createdAt}. Last read was ${lastRead}. Is New? ${latestMsg.createdAt > lastRead}`);
+       } else {
+         console.log(`No relevant messages found for ${user.name}`);
+       }
+    }
+
+    console.log(`Notification Count for ${user.name}: ${realCount} (Last read: ${lastRead})`);
+    res.json({ count: realCount });
+  } catch (err) {
+    console.error('Notification Count Error:', err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 标记消息已读
+app.post('/api/notifications/read', async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+
+    await User.findOneAndUpdate(
+      { googleId: req.user.googleId },
+      { lastReadInteractions: new Date() }
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 });
 
