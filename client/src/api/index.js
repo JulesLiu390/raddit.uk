@@ -195,4 +195,9 @@ export const updateTopic = async (topicId, data) => {
   return response.data;
 };
 
+export const searchUsers = async (query) => {
+  const response = await api.get(`/users/search?q=${encodeURIComponent(query)}`);
+  return response.data;
+};
+
 export default api;

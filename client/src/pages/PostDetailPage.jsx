@@ -27,7 +27,7 @@ import {
   BsTrash
 } from 'react-icons/bs';
 import Header from '../components/Header';
-import { getPost, getPostMessages, createMessage, toggleFollowPost, deleteMessage, deletePost, reactToMessage, incrementPostView, toggleFollowUser, getUserFollowingUsers } from '../api';
+import { getPost, getPostMessages, createMessage, toggleFollowPost, toggleFollowUser, incrementPostView, deletePost, searchUsers, deleteMessage, reactToMessage, getUserFollowingUsers } from '../api';
 import './PostDetailPage.css';
 import customSticker1 from '../assets/customSticker1.png';
 import { useHeader } from '../context/HeaderContext';
@@ -479,6 +479,7 @@ const CommentNode = ({
 function PostDetailPage({ user, onLogout, onCreatePost }) {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { setHeaderConfig, resetHeader } = useHeader();
   const [post, setPost] = useState(null);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -491,14 +492,52 @@ function PostDetailPage({ user, onLogout, onCreatePost }) {
   const [replyContent, setReplyContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showPostPicker, setShowPostPicker] = useState(false);
-  const [followingPost, setFollowingPost] = useState(false);
-  const [isFollowingAuthor, setIsFollowingAuthor] = useState(false);
   const postPickerRef = useRef(null);
-  const { setHeaderConfig, resetHeader } = useHeader();
   const answerFormRef = useRef(null);
-  
+
+  // Mention Logic
+  const [mentionQuery, setMentionQuery] = useState(null);
+  const [mentionResults, setMentionResults] = useState([]);
+  const searchTimeoutRef = useRef(null);
+
+  const handleAnswerChange = (val) => {
+    setAnswerContent(val);
+    
+    // Detect @ at the end
+    const match = val && val.match(/(?:^|\s)@(\S*)$/);
+    if (match) {
+      const query = match[1];
+      setMentionQuery(query);
+      
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = setTimeout(async () => {
+         try {
+           const results = await searchUsers(query);
+           setMentionResults(results);
+         } catch (e) {
+           console.error(e);
+         }
+      }, 300);
+    } else {
+      setMentionQuery(null);
+      setMentionResults([]);
+    }
+  };
+
+  const handleSelectMention = (user) => {
+    const newValue = answerContent.replace(/(?:^|\s)@(\S*)$/, (match) => {
+        const prefix = match.startsWith(' ') ? ' ' : '';
+        return `${prefix}[@${user.name}](/profile/${user.googleId}) `;
+    });
+    setAnswerContent(newValue);
+    setMentionQuery(null);
+    setMentionResults([]);
+  };
+
   // State for custom reaction burst
   const [burstState, setBurstState] = useState({ active: false, x: 0, y: 0 });
+  const [isFollowingAuthor, setIsFollowingAuthor] = useState(false);
+  const [followingPost, setFollowingPost] = useState(false);
 
   useEffect(() => {
     if (post && user) {
@@ -1237,10 +1276,45 @@ function PostDetailPage({ user, onLogout, onCreatePost }) {
                   </div>
                 )}
               </div>
-              <form onSubmit={handleSubmitAnswer}>
+              <form onSubmit={handleSubmitAnswer} style={{ position: 'relative' }}>
+                {mentionQuery !== null && mentionResults.length > 0 && (
+                  <div className="mention-list" style={{
+                    position: 'absolute',
+                    bottom: '100%',
+                    left: 0,
+                    backgroundColor: 'white',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                    zIndex: 1000,
+                    maxHeight: '200px',
+                    overflowY: 'auto',
+                    width: '200px'
+                  }}>
+                    {mentionResults.map(u => (
+                      <div 
+                        key={u.googleId}
+                        onClick={() => handleSelectMention(u)}
+                        style={{
+                          padding: '8px 12px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          borderBottom: '1px solid #eee'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f5f5f5'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+                      >
+                        <img src={u.picture} alt={u.name} style={{width: 20, height: 20, borderRadius: '50%'}}/>
+                        <span>{u.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <MDEditor
                   value={answerContent}
-                  onChange={setAnswerContent}
+                  onChange={handleAnswerChange}
                   preview="edit"
                   height={200}
                   visibleDragbar={false}
