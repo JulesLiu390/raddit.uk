@@ -449,3 +449,9 @@
 .profile-avatar-container:hover .avatar-overlay {
   opacity: 1;
 }
+
+/* Crop Cover Modal */
+.crop-cover-modal {
+  width: 800px;
+  max-width: 95vw;
+}

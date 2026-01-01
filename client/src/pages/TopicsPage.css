@@ -69,16 +69,50 @@
   color: #ff4500;
 }
 
-.topic-card-icon {
-  font-size: 32px;
+.topic-card-icon-wrapper {
+  position: relative;
   width: 48px;
   height: 48px;
+  flex-shrink: 0;
+}
+
+.topic-card-icon {
+  width: 100%;
+  height: 100%;
+  font-size: 32px;
   background: #f8f9fa;
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.topic-card-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.topic-icon-edit-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  opacity: 0;
+  transition: opacity 0.2s;
+  cursor: pointer;
+}
+
+.topic-card-icon-wrapper:hover .topic-icon-edit-overlay {
+  opacity: 1;
 }
 
 .topic-card-content {
@@ -109,4 +143,17 @@
 .topic-card-stats {
   font-size: 12px;
   color: #8590a6;
+}
+
+.topics-section {
+  margin-bottom: 32px;
+}
+
+.section-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 16px;
+  padding-left: 8px;
+  border-left: 4px solid #ff4500;
 }

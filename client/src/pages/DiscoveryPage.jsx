@@ -5,6 +5,7 @@ import Header from '../components/Header';
 import LeftSidebar from '../components/LeftSidebar';
 import Sidebar from '../components/Sidebar';
 import PostCard from '../components/PostCard';
+import FeedPostCard from '../components/FeedPostCard';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { BsChatText, BsPersonFill, BsReply } from 'react-icons/bs';
@@ -104,7 +105,7 @@ function DiscoveryPage({ user, onLogout, onCreatePost }) {
             </span>
             <span className="time">{new Date(item.createdAt).toLocaleString('zh-CN')}</span>
           </div>
-          <PostCard post={item} user={user} />
+          <FeedPostCard post={item} user={user} />
         </div>
       );
     } else if (item.type === 'reply') {

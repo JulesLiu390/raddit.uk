@@ -1,7 +1,8 @@
 import axios from 'axios';
 
 // Use localhost for development, or the production URL if deployed
-const API_URL = window.location.hostname === 'localhost' 
+const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const API_URL = isLocal
   ? 'https://localhost:8443/api' 
   : 'https://raddit.uk:8443/api';
 
@@ -176,6 +177,21 @@ export const deleteTopic = async (topicId) => {
 export const getDiscoveryFeed = async (cursor = null) => {
   const params = cursor ? { cursor } : {};
   const response = await api.get('/discovery', { params });
+  return response.data;
+};
+
+export const getNotificationCount = async () => {
+  const response = await api.get('/notifications/count');
+  return response.data;
+};
+
+export const markNotificationsRead = async () => {
+  const response = await api.post('/notifications/read');
+  return response.data;
+};
+
+export const updateTopic = async (topicId, data) => {
+  const response = await api.put(`/topics/${topicId}`, data);
   return response.data;
 };
 

@@ -27,10 +27,10 @@ import {
   BsTrash
 } from 'react-icons/bs';
 import Header from '../components/Header';
-import Sidebar from '../components/Sidebar';
-import { getPost, getPostMessages, createMessage, toggleFollowPost, deleteMessage, reactToMessage, incrementPostView, toggleFollowUser, getUserFollowingUsers } from '../api';
+import { getPost, getPostMessages, createMessage, toggleFollowPost, deleteMessage, deletePost, reactToMessage, incrementPostView, toggleFollowUser, getUserFollowingUsers } from '../api';
 import './PostDetailPage.css';
 import customSticker1 from '../assets/customSticker1.png';
+import { useHeader } from '../context/HeaderContext';
 
 // --- 自定义表情配置 ---
 const CUSTOM_REACTION_KEY = 'custom_sticker_1';
@@ -227,7 +227,23 @@ const CommentNode = ({
                   权蛆
                 </span>
               )}
-              {message.isVerified && <BsCheckCircleFill className="verified-badge" />}
+              {message.isBot && (
+                <span style={{ 
+                  marginLeft: '4px', 
+                  backgroundColor: '#d4a017', 
+                  color: '#fff', 
+                  fontSize: '10px', 
+                  padding: '0 4px', 
+                  borderRadius: '4px',
+                  display: 'inline-block',
+                  verticalAlign: 'middle',
+                  fontWeight: 'normal',
+                  lineHeight: '1.4'
+                }}>
+                  🤖蛆体炼成术产物🪱
+                </span>
+              )}
+              {message.isVerified && !message.isBot && <BsCheckCircleFill className="verified-badge" />}
               {message.replyToUserId && (
                 <span className="reply-to">回复 @{message.replyToName || message.replyToUserId}</span>
               )}
@@ -270,7 +286,23 @@ const CommentNode = ({
                   权蛆
                 </span>
               )}
-              {message.isVerified && <BsCheckCircleFill className="verified-badge" />}
+              {message.isBot && (
+                <span style={{ 
+                  marginLeft: '6px', 
+                  backgroundColor: '#d4a017', 
+                  color: '#fff', 
+                  fontSize: '11px', 
+                  padding: '0 4px', 
+                  borderRadius: '4px',
+                  display: 'inline-block',
+                  verticalAlign: 'middle',
+                  fontWeight: 'normal',
+                  lineHeight: '1.4'
+                }}>
+                  🤖蛆体炼成术产物🪱
+                </span>
+              )}
+              {message.isVerified && !message.isBot && <BsCheckCircleFill className="verified-badge" />}
             </div>
             {message.replyToUserId && (
               <div className="reply-to">回复 @{message.replyToName || message.replyToUserId}</div>
@@ -462,6 +494,8 @@ function PostDetailPage({ user, onLogout, onCreatePost }) {
   const [followingPost, setFollowingPost] = useState(false);
   const [isFollowingAuthor, setIsFollowingAuthor] = useState(false);
   const postPickerRef = useRef(null);
+  const { setHeaderConfig, resetHeader } = useHeader();
+  const answerFormRef = useRef(null);
   
   // State for custom reaction burst
   const [burstState, setBurstState] = useState({ active: false, x: 0, y: 0 });
@@ -779,7 +813,8 @@ function PostDetailPage({ user, onLogout, onCreatePost }) {
       navigate('/');
     } catch (err) {
       console.error('删除帖子失败:', err);
-      alert('删除失败，请重试');
+      const errorMsg = err.response?.data?.message || err.message || '删除失败，请重试';
+      alert(`删除失败: ${errorMsg}`);
     }
   };
 
@@ -791,7 +826,8 @@ function PostDetailPage({ user, onLogout, onCreatePost }) {
       await fetchMessages();
     } catch (err) {
       console.error('删除评论失败:', err);
-      alert('删除失败，请重试');
+      const errorMsg = err.response?.data?.message || err.message || '删除失败，请重试';
+      alert(`删除失败: ${errorMsg}`);
     }
   };
 
@@ -903,6 +939,38 @@ function PostDetailPage({ user, onLogout, onCreatePost }) {
     const depth = message.depth || (message.parentId ? 2 : 1);
     return depth < 3;
   };
+
+  const scrollToAnswer = () => {
+    setShowAnswerForm(true);
+    // Wait for state update and render
+    setTimeout(() => {
+      answerFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
+  };
+
+  // Update Header Context
+  useEffect(() => {
+    if (post) {
+      setHeaderConfig({
+        title: post.title,
+        isVisible: true,
+        actions: (
+          <>
+            <button className="header-action-btn primary" onClick={scrollToAnswer}>
+              写回答
+            </button>
+            <button 
+              className={`header-action-btn ${followingPost ? 'active' : ''}`} 
+              onClick={handleFollowPost}
+            >
+              {followingPost ? '已关注' : '关注问题'}
+            </button>
+          </>
+        )
+      });
+    }
+    return () => resetHeader();
+  }, [post, followingPost, user]); // Re-run when post or follow status changes
 
   if (loading) {
     return (
@@ -1156,7 +1224,7 @@ function PostDetailPage({ user, onLogout, onCreatePost }) {
 
           {/* 写回答表单 */}
           {showAnswerForm && (
-            <div className="answer-form-card">
+            <div className="answer-form-card" ref={answerFormRef}>
               <div className="identity-hint" style={{ marginBottom: '10px', fontSize: '14px', color: '#666' }}>
                 {user ? (
                   <div className="user-identity" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1249,10 +1317,11 @@ function PostDetailPage({ user, onLogout, onCreatePost }) {
               />
             ))}
           </div>
-        </div>
 
-        {/* 右侧边栏 */}
-        <Sidebar user={user} showUserCard={false} showHotPosts={false} />
+          <div className="end-of-list" style={{ textAlign: 'center', padding: '20px', color: '#8590a6', fontSize: '14px' }}>
+            <span>已经到底啦 ~</span>
+          </div>
+        </div>
       </main>
     </div>
   );

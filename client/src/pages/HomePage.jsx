@@ -4,7 +4,8 @@ import Header from '../components/Header';
 import LeftSidebar from '../components/LeftSidebar';
 import Sidebar from '../components/Sidebar';
 import PostCard from '../components/PostCard';
-import { getPosts, getUserFollowing } from '../api';
+import FeedPostCard from '../components/FeedPostCard';
+import { getPosts, getHotPosts, getUserFollowing } from '../api';
 import './HomePage.css';
 
 function HomePage({ user, onLogout, onCreatePost, type = 'all' }) {
@@ -14,7 +15,13 @@ function HomePage({ user, onLogout, onCreatePost, type = 'all' }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
-    document.title = type === 'following' ? '我关注的问题 - Raddit' : 'Raddit主页';
+    if (type === 'following') {
+      document.title = '我关注的问题 - Raddit';
+    } else if (type === 'recommend') {
+      document.title = '推荐 - Raddit';
+    } else {
+      document.title = 'Raddit主页';
+    }
   }, [type]);
 
   const handleSearch = (query) => {
@@ -32,6 +39,9 @@ function HomePage({ user, onLogout, onCreatePost, type = 'all' }) {
           return;
         }
         data = await getUserFollowing(user.id);
+      } else if (type === 'all') {
+        // 'all' corresponds to the default 'Hot' tab
+        data = await getHotPosts();
       } else {
         data = await getPosts();
       }
@@ -111,14 +121,22 @@ function HomePage({ user, onLogout, onCreatePost, type = 'all' }) {
               )}
 
               {!loading && !error && posts.map((post, index) => (
-                <PostCard 
-                  key={post.id} 
-                  post={post} 
-                  rank={index + 1}
-                  isNew={index < 2}
-                  user={user}
-                  onDelete={(id) => setPosts(posts.filter(p => p.id !== id))}
-                />
+                type === 'recommend' ? (
+                  <FeedPostCard 
+                    key={post.id} 
+                    post={post} 
+                    user={user}
+                  />
+                ) : (
+                  <PostCard 
+                    key={post.id} 
+                    post={post} 
+                    rank={type === 'all' ? index + 1 : null}
+                    isNew={type === 'all' && index < 2}
+                    user={user}
+                    onDelete={(id) => setPosts(posts.filter(p => p.id !== id))}
+                  />
+                )
               ))}
             </div>
           </div>

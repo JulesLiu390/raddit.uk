@@ -53,6 +53,14 @@ const userSchema = new mongoose.Schema({
     type: String,
     enum: ['user', 'admin'],
     default: 'user'
+  },
+  lastReadInteractions: {
+    type: Date,
+    default: Date.now
+  },
+  coverImage: {
+    type: String,
+    default: ''
   }
 });
 

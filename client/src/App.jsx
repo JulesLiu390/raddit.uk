@@ -89,11 +89,15 @@ function App() {
       <Routes>
         <Route 
           path="/" 
-          element={<HomePage user={user} onLogout={handleLogout} onCreatePost={openCreateModal} />} 
+          element={<HomePage user={user} onLogout={handleLogout} onCreatePost={openCreateModal} type="recommend" />} 
+        />
+        <Route 
+          path="/hot" 
+          element={<HomePage user={user} onLogout={handleLogout} onCreatePost={openCreateModal} type="all" />} 
         />
         <Route 
           path="/following" 
-          element={<HomePage user={user} onLogout={handleLogout} type="following" onCreatePost={openCreateModal} />} 
+          element={<HomePage user={user} onLogout={handleLogout} onCreatePost={openCreateModal} type="following" />} 
         />
         <Route 
           path="/following-users" 

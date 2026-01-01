@@ -292,7 +292,12 @@ function CreatePostModal({ onClose, onSubmit, user, initialTopic }) {
                             gap: '4px'
                           }}
                         >
-                          {topic.icon} {topic.name}
+                          {topic.icon && (topic.icon.startsWith('http') ? (
+                            <img src={topic.icon} alt="" style={{ width: '16px', height: '16px', borderRadius: '2px', objectFit: 'cover' }} />
+                          ) : (
+                            <span>{topic.icon}</span>
+                          ))}
+                          <span>{topic.name}</span>
                         </button>
                       );
                     })}
@@ -303,7 +308,12 @@ function CreatePostModal({ onClose, onSubmit, user, initialTopic }) {
               <div className="selected-topics-list">
                 {selectedTopics.map(topic => (
                   <span key={topic.id} className="selected-topic-tag">
-                    {topic.icon} {topic.name}
+                    {topic.icon && (topic.icon.startsWith('http') ? (
+                      <img src={topic.icon} alt="" style={{ width: '16px', height: '16px', borderRadius: '2px', objectFit: 'cover', marginRight: '4px' }} />
+                    ) : (
+                      <span style={{ marginRight: '4px' }}>{topic.icon}</span>
+                    ))}
+                    {topic.name}
                     <button 
                       type="button" 
                       className="remove-topic-btn"
@@ -350,7 +360,13 @@ function CreatePostModal({ onClose, onSubmit, user, initialTopic }) {
                       className="suggestion-item"
                       onClick={() => handleSelectTopic(topic)}
                     >
-                      <span className="topic-icon">{topic.icon}</span>
+                      <span className="topic-icon">
+                        {topic.icon && (topic.icon.startsWith('http') ? (
+                          <img src={topic.icon} alt="" style={{ width: '16px', height: '16px', borderRadius: '2px', objectFit: 'cover' }} />
+                        ) : (
+                          topic.icon
+                        ))}
+                      </span>
                       <span className="topic-name">{topic.name}</span>
                     </div>
                   ))}

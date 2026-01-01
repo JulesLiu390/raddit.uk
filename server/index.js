@@ -14,6 +14,7 @@ const User = require('./models/User');
 const Message = require('./models/Message');
 const Topic = require('./models/Topic');
 const authMiddleware = require('./middleware/auth');
+const { generateBotReply } = require('./services/geminiBot');
 
 const app = express();
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/raddit';
@@ -265,29 +266,22 @@ app.post('/api/posts/:id/view', async (req, res) => {
   }
 });
 
-// 获取热门帖子 (用于侧边栏)
+// 获取热门帖子 (用于侧边栏和热榜)
 app.get('/api/posts/hot', async (req, res) => {
   try {
     const posts = await Post.find()
       .sort({ heat: -1, createdAt: -1 }) // 按热度倒序，然后按时间倒序
-      .limit(10) // 只取前10名
-      .select('title heat id authorId'); // 只返回需要的字段
+      .limit(10); // 只取前10名
       
-    // Note: Hot posts usually just show title, but if we show author, we should enrich
-    // Since we selected specific fields, enrichContentWithUser will work if authorId is present
-    // But usually hot posts sidebar doesn't show author. 
-    // Let's enrich anyway just in case frontend uses it or will use it.
-    // Wait, the select above didn't include authorId originally? 
-    // Original: .select('title heat id');
-    // If frontend doesn't use author, we don't need to enrich.
-    // Let's check if frontend uses author in hot posts.
-    // Assuming it might, let's leave it as is or just return posts if no author needed.
-    // Actually, let's just return posts as before if author is not displayed.
-    // But to be safe, let's not change this one unless requested.
-    // Wait, the user said "Post should store unique id... to adapt to user name update".
-    // If hot posts don't show name, it doesn't matter.
-    // Let's skip enriching hot posts for now to save performance, unless we know it shows name.
-    res.json(posts);
+    const enrichedPosts = await enrichContentWithUser(posts);
+    
+    // Add comments count
+    const postsWithComments = await Promise.all(enrichedPosts.map(async (post) => {
+      const count = await Message.countDocuments({ postId: post.id });
+      return { ...post, commentsCount: count };
+    }));
+
+    res.json(postsWithComments);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -299,7 +293,14 @@ app.get('/api/posts', async (req, res) => {
     // 按时间倒序排列
     const posts = await Post.find().sort({ createdAt: -1 });
     const enrichedPosts = await enrichContentWithUser(posts);
-    res.json(enrichedPosts);
+    
+    // Fetch comment counts for each post
+    const postsWithComments = await Promise.all(enrichedPosts.map(async (post) => {
+      const count = await Message.countDocuments({ postId: post.id });
+      return { ...post, commentsCount: count };
+    }));
+
+    res.json(postsWithComments);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -392,6 +393,54 @@ app.post('/api/posts', async (req, res) => {
 
     const savedPost = await newPost.save();
     res.status(201).json(savedPost);
+
+    // Trigger AI Bot Reply (Async)
+    (async () => {
+      try {
+        // Delay slightly to simulate "reading" time (e.g., 10 seconds)
+        // setTimeout(async () => { ... }, 10000); 
+        // For now, we run it immediately but asynchronously
+        
+        // Extract images from content
+        const imgRegex = /!\[.*?\]\((https?:\/\/[^\s)]+)\)/g;
+        const imageUrls = [];
+        let match;
+        while ((match = imgRegex.exec(savedPost.content)) !== null) {
+          imageUrls.push(match[1]);
+        }
+
+        const replyContent = await generateBotReply(savedPost.title, savedPost.content, imageUrls);
+        
+        if (replyContent) {
+          const botUser = await User.findOne({ googleId: 'raddit-ai-bot-001' });
+          
+          if (botUser) {
+            const botMessage = new Message({
+              postId: savedPost._id.toString(),
+              content: replyContent,
+              author: botUser.name,
+              authorAvatar: botUser.picture,
+              authorId: botUser.googleId,
+              parentId: null,
+              depth: 1,
+              replyToUserId: null,
+              replyToName: null,
+              authorBio: botUser.bio,
+              isVerified: true, // Bot is verified
+              upvotes: 0
+            });
+            
+            await botMessage.save();
+            console.log(`[Bot] Replied to post ${savedPost._id}`);
+          } else {
+            console.warn('[Bot] Bot user not found. Run "node scripts/init_bot_user.js" to create it.');
+          }
+        }
+      } catch (error) {
+        console.error('[Bot] Error generating reply:', error);
+      }
+    })();
+
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -536,6 +585,60 @@ app.post('/api/posts/:postId/messages', async (req, res) => {
   }
 });
 
+// 获取未读消息计数
+app.get('/api/notifications/count', async (req, res) => {
+  try {
+    if (!req.user) return res.json({ count: 0 });
+
+    const userId = req.user.googleId;
+    const user = await User.findOne({ googleId: userId });
+    if (!user) return res.json({ count: 0 });
+
+    const lastRead = user.lastReadInteractions || new Date(0);
+
+    // 先找到用户的所有帖子 ID
+    const userPosts = await Post.find({ authorId: userId }).select('_id');
+    const userPostIds = userPosts.map(p => p._id.toString());
+
+    // 修正查询逻辑：
+    // 1. 回复给我的评论 (replyToUserId = me)
+    // 2. 回复给我的帖子 (postId in myPosts)，但排除掉情况1（避免重复），也排除掉我自己发的
+    
+    const count = await Message.countDocuments({
+      $and: [
+        { createdAt: { $gt: lastRead } },
+        { authorId: { $ne: userId } }, // 排除自己发的
+        {
+          $or: [
+            { replyToUserId: userId }, // 回复我的评论
+            { postId: { $in: userPostIds } } // 在我的帖子里
+          ]
+        }
+      ]
+    });
+
+    res.json({ count });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 标记消息已读
+app.post('/api/notifications/read', async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+
+    await User.findOneAndUpdate(
+      { googleId: req.user.googleId },
+      { lastReadInteractions: new Date() }
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // 获取用户资料
 app.get('/api/users/:id', async (req, res) => {
   try {
@@ -558,7 +661,7 @@ app.put('/api/users/:id', async (req, res) => {
       return res.status(403).json({ message: 'Unauthorized' });
     }
 
-    const { bio, name, picture } = req.body;
+    const { bio, name, picture, coverImage } = req.body;
     const updateData = {};
     
     const currentUser = await User.findOne({ googleId: req.params.id });
@@ -579,6 +682,7 @@ app.put('/api/users/:id', async (req, res) => {
 
     if (bio !== undefined) updateData.bio = bio;
     if (picture !== undefined) updateData.picture = picture;
+    if (coverImage !== undefined) updateData.coverImage = coverImage;
 
     const user = await User.findOneAndUpdate(
       { googleId: req.params.id },
@@ -935,6 +1039,7 @@ app.get('/api/users/:id/interactions', async (req, res) => {
         targetId: reply.postId,
         targetContent: post ? post.title : 'Unknown Post',
         actorId: reply.authorId,
+        actorNameFallback: reply.author,
         content: reply.content,
         createdAt: reply.createdAt,
         postId: reply.postId
@@ -954,6 +1059,7 @@ app.get('/api/users/:id/interactions', async (req, res) => {
         targetId: reply.parentId,
         targetContent: '...', // Content of the parent comment is hard to get efficiently without join
         actorId: reply.authorId,
+        actorNameFallback: reply.author,
         content: reply.content,
         createdAt: reply.createdAt,
         postId: reply.postId
@@ -1020,9 +1126,18 @@ app.get('/api/users/:id/interactions', async (req, res) => {
 
     const enrichedInteractions = limitedInteractions.map(i => {
       const actor = actorMap.get(i.actorId);
+      let name = 'Unknown';
+      if (actor) {
+        name = actor.name;
+      } else if (i.actorNameFallback) {
+        name = i.actorNameFallback;
+      } else if (i.actorId) {
+        name = i.actorId;
+      }
+
       return {
         ...i,
-        actorName: actor ? actor.name : 'Unknown',
+        actorName: name,
         actorAvatar: actor ? actor.picture : null
       };
     });
@@ -1051,7 +1166,13 @@ app.post('/api/upload-image', async (req, res) => {
 
     // 使用 https 模块发送请求到 ImgBB
     const formData = new URLSearchParams();
-    formData.append('key', '7953ab3bbb9bee09a2b211444a1b3724');
+    // Use environment variable for ImgBB API Key
+    const IMGBB_API_KEY = process.env.IMGBB_API_KEY;
+    if (!IMGBB_API_KEY) {
+        console.error('IMGBB_API_KEY is missing in environment variables');
+        return res.status(500).json({ success: false, message: 'Server configuration error' });
+    } 
+    formData.append('key', IMGBB_API_KEY);
     formData.append('image', base64Data);
 
     const postData = formData.toString();
@@ -1161,6 +1282,36 @@ app.get('/api/users/:id/followed-topics', async (req, res) => {
   }
 });
 
+// 更新话题 (仅管理员)
+app.put('/api/topics/:id', async (req, res) => {
+  try {
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Permission denied' });
+    }
+    
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ message: 'Topic not found' });
+    }
+
+    const { icon, name, description } = req.body;
+    const updateData = {};
+    if (icon) updateData.icon = icon;
+    if (name) updateData.name = name;
+    if (description !== undefined) updateData.description = description;
+
+    const updatedTopic = await Topic.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true }
+    );
+
+    if (!updatedTopic) return res.status(404).json({ message: 'Topic not found' });
+    res.json(updatedTopic);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // 处理所有其他请求，返回 index.html (支持前端路由)
 app.get(/(.*)/, (req, res) => {
   console.log('Fallback to index.html for:', req.url);
@@ -1249,6 +1400,11 @@ async function enrichContentWithUser(items) {
       if (itemObj.hasOwnProperty('authorBio')) {
         itemObj.authorBio = user.bio;
       }
+      
+      // Add isBot flag
+      if (user.googleId === 'raddit-ai-bot-001') {
+        itemObj.isBot = true;
+      }
     }
     
     // Also update replyToName if applicable (for messages)
@@ -1307,6 +1463,11 @@ async function enrichMessagesWithUser(messages) {
       msgObj.authorAvatar = user.picture;
       msgObj.authorBio = user.bio;
       msgObj.authorRole = user.role;
+      
+      // Add isBot flag
+      if (user.googleId === 'raddit-ai-bot-001') {
+        msgObj.isBot = true;
+      }
     }
     
     // Update reply target name
@@ -1342,9 +1503,24 @@ app.delete('/api/posts/:id', async (req, res) => {
       return res.status(404).json({ message: 'Post not found' });
     }
 
+    console.log(`[Delete Post] User: ${req.user.googleId} (${req.user.role}), Post Author: ${post.authorId}`);
+
     // Check permission: Admin or Author
-    if (req.user.role !== 'admin' && req.user.googleId !== post.authorId) {
-      return res.status(403).json({ message: '无权删除此帖子' });
+    // Note: post.authorId is a String (googleId), req.user.googleId is a String.
+    // But sometimes post.authorId might be missing or null if created by anonymous/legacy.
+    // Also handle case where post.authorId is ObjectId (if schema changed).
+    
+    // Ensure strict string comparison and trim
+    const currentUserId = String(req.user.googleId).trim();
+    const postAuthorId = post.authorId ? String(post.authorId).trim() : '';
+
+    const isAuthor = postAuthorId && (postAuthorId === currentUserId);
+    const isAdmin = req.user.role === 'admin';
+
+    console.log(`[Delete Post] isAuthor: ${isAuthor}, isAdmin: ${isAdmin}`);
+
+    if (!isAdmin && !isAuthor) {
+      return res.status(403).json({ message: `无权删除此帖子 (User: ${currentUserId}, Author: ${postAuthorId})` });
     }
 
     await Post.findByIdAndDelete(req.params.id);

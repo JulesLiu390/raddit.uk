@@ -3,9 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import LeftSidebar from '../components/LeftSidebar';
 import Sidebar from '../components/Sidebar';
-import { getUserInteractions } from '../api';
+import { getUserInteractions, markNotificationsRead } from '../api';
 import './HomePage.css'; // Use HomePage layout styles
 import './ProfilePage.css'; // Reuse profile styles
+import customSticker1 from '../assets/customSticker1.png';
+
+const CUSTOM_REACTION_KEY = 'custom_sticker_1';
 
 function InteractionsPage({ user, onLogout, onCreatePost }) {
   const navigate = useNavigate();
@@ -21,6 +24,8 @@ function InteractionsPage({ user, onLogout, onCreatePost }) {
 
     const fetchData = async () => {
       try {
+        // 标记消息为已读
+        await markNotificationsRead();
         const data = await getUserInteractions(user.id);
         setItems(data);
       } catch (err) {
@@ -74,7 +79,13 @@ function InteractionsPage({ user, onLogout, onCreatePost }) {
                         </>
                       ) : (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontSize: '20px' }}>{item.content}</span>
+                          <span style={{ fontSize: '20px', display: 'inline-flex', alignItems: 'center' }}>
+                            {item.content === CUSTOM_REACTION_KEY ? (
+                              <img src={customSticker1} alt="sticker" style={{ width: '24px', height: '24px' }} />
+                            ) : (
+                              item.content
+                            )}
+                          </span>
                           <span style={{ color: '#8590a6' }}>{item.targetContent}</span>
                         </div>
                       )}

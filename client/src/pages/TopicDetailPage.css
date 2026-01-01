@@ -14,15 +14,51 @@
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
-.topic-icon {
-  font-size: 48px;
+.topic-icon-wrapper {
+  position: relative;
   width: 80px;
   height: 80px;
+  flex-shrink: 0;
+}
+
+.topic-icon {
+  width: 100%;
+  height: 100%;
+  font-size: 48px;
   background: #f8f9fa;
   border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+}
+
+.topic-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.topic-icon-edit-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  opacity: 0;
+  transition: opacity 0.2s;
+  cursor: pointer;
+  font-size: 24px;
+}
+
+.topic-icon-wrapper:hover .topic-icon-edit-overlay {
+  opacity: 1;
 }
 
 .topic-info {
@@ -73,6 +109,92 @@
 .join-btn.joined:hover {
   background: #e6e8eb;
   color: #333;
+}
+
+.topic-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.topic-title-row h1 {
+  margin: 0;
+}
+
+.edit-topic-btn {
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  transition: all 0.2s;
+}
+
+.edit-topic-btn:hover {
+  background: #f0f2f5;
+  color: #0079d3;
+}
+
+.edit-topic-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 500px;
+}
+
+.edit-topic-name {
+  font-size: 24px;
+  font-weight: bold;
+  padding: 4px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.edit-topic-desc {
+  font-size: 14px;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.edit-topic-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.edit-topic-actions button {
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.edit-topic-actions .save-btn {
+  background: #0079d3;
+  color: white;
+  border: none;
+}
+
+.edit-topic-actions .save-btn:hover {
+  background: #0060a8;
+}
+
+.edit-topic-actions .cancel-btn {
+  background: white;
+  color: #666;
+  border: 1px solid #ddd;
+}
+
+.edit-topic-actions .cancel-btn:hover {
+  background: #f5f5f5;
 }
 
 .empty-state {

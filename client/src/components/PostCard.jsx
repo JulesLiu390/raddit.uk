@@ -3,6 +3,22 @@ import { BsFire, BsShare, BsTrash } from 'react-icons/bs';
 import { deletePost } from '../api';
 import './PostCard.css';
 
+// Helper to strip markdown
+const stripMarkdown = (markdown) => {
+  if (!markdown) return '';
+  return markdown
+    .replace(/!\[.*?\]\(.*?\)/g, '') // Remove images
+    .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Replace links with text
+    .replace(/#{1,6}\s/g, '') // Remove headers
+    .replace(/(\*\*|__)(.*?)\1/g, '$2') // Remove bold
+    .replace(/(\*|_)(.*?)\1/g, '$2') // Remove italic
+    .replace(/`{3}[\s\S]*?`{3}/g, '') // Remove code blocks
+    .replace(/`(.+?)`/g, '$1') // Remove inline code
+    .replace(/>\s/g, '') // Remove blockquotes
+    .replace(/\n/g, ' ') // Replace newlines with spaces
+    .trim();
+};
+
 function PostCard({ post, rank, isNew, user, onDelete }) {
   const navigate = useNavigate();
 
@@ -76,9 +92,12 @@ function PostCard({ post, rank, isNew, user, onDelete }) {
         
         {post.content && (
           <p className="post-summary">
-            {post.content.length > 120 
-              ? post.content.substring(0, 120) + '...' 
-              : post.content}
+            {(() => {
+              const plainText = stripMarkdown(post.content);
+              return plainText.length > 120 
+                ? plainText.substring(0, 120) + '...' 
+                : plainText;
+            })()}
           </p>
         )}
 

@@ -15,7 +15,54 @@
   height: 52px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Middle Viewport & Animation */
+.header-middle-viewport {
+  flex: 1;
+  height: 52px;
+  overflow: hidden;
+  position: relative;
+  margin: 0 20px;
+}
+
+.header-middle-scroll-container {
+  width: 100%;
+  height: 100%;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.header-middle-scroll-container.show-context {
+  transform: translateY(-52px);
+}
+
+.header-middle-layer {
+  height: 52px;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.layer-default {
   gap: 20px;
+}
+
+.layer-context {
+  justify-content: space-between;
 }
 
 /* Mobile Menu Button */
@@ -299,7 +346,75 @@
   color: var(--primary-color);
 }
 
-/* Responsive */
+/* Header Action Buttons */
+.header-action-btn {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 3px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+  background: transparent;
+  color: #8590a6;
+}
+
+.header-action-btn:hover {
+  color: #76839b;
+}
+
+.header-action-btn.primary {
+  background: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+.header-action-btn.primary:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+.header-action-btn.active {
+  background: #8590a6;
+  color: white;
+  border-color: #8590a6;
+}
+
+/* Context Header Mode */
+.header-context-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #000000;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: 20px;
+  flex: 1;
+}
+
+.context-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+/* Responsive adjustments for context header */
+@media (max-width: 768px) {
+  .header-context-title {
+    font-size: 14px;
+  }
+  
+  .context-actions {
+    gap: 8px;
+  }
+  
+  .header-middle-viewport {
+    margin: 0 10px;
+  }
+}
+
 @media (max-width: 1000px) {
   .header-nav {
     display: none;

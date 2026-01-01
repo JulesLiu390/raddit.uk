@@ -3,63 +3,14 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Header from '../components/Header';
+import FeedPostCard from '../components/FeedPostCard';
 import { getPosts, getUserReplies, getPostMessages, getUser, updateUser, getUserFollowing, getUserFollowingUsers, toggleFollowUser, getUserReactions } from '../api';
-import Cropper from 'react-easy-crop';
+import ImageCropperModal from '../components/ImageCropperModal';
 import { uploadImageToImgBB } from '../utils/imageUpload';
 import './ProfilePage.css';
+import customSticker1 from '../assets/customSticker1.png';
 
-// Canvas 裁剪辅助函数
-const getCroppedImg = (imageSrc, pixelCrop) => {
-  const createImage = (url) =>
-    new Promise((resolve, reject) => {
-      const image = new Image();
-      image.addEventListener('load', () => resolve(image));
-      image.addEventListener('error', (error) => reject(error));
-      image.setAttribute('crossOrigin', 'anonymous');
-      image.src = url;
-    });
-
-  return new Promise(async (resolve, reject) => {
-    try {
-      const image = await createImage(imageSrc);
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-
-      if (!ctx) {
-        return reject(new Error('No 2d context'));
-      }
-
-      // 设置 canvas 大小为裁剪区域大小
-      canvas.width = pixelCrop.width;
-      canvas.height = pixelCrop.height;
-
-      // 绘制裁剪后的图片
-      ctx.drawImage(
-        image,
-        pixelCrop.x,
-        pixelCrop.y,
-        pixelCrop.width,
-        pixelCrop.height,
-        0,
-        0,
-        pixelCrop.width,
-        pixelCrop.height
-      );
-
-      // 导出为 Blob
-      canvas.toBlob((blob) => {
-        if (!blob) {
-          reject(new Error('Canvas is empty'));
-          return;
-        }
-        blob.name = 'avatar.jpeg';
-        resolve(blob);
-      }, 'image/jpeg');
-    } catch (e) {
-      reject(e);
-    }
-  });
-};
+const CUSTOM_REACTION_KEY = 'custom_sticker_1';
 
 const MarkdownComponents = {
   a: ({ node, ...props }) => {
@@ -95,12 +46,14 @@ function ProfilePage({ user, onLogout, onCreatePost }) {
   
   // Avatar Upload State
   const [imageSrc, setImageSrc] = useState(null);
-  const [crop, setCrop] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(1);
-  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
   const [showCropModal, setShowCropModal] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  // Cover Upload State
+  const [coverImageSrc, setCoverImageSrc] = useState(null);
+  const [showCoverCropModal, setShowCoverCropModal] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
   const fileInputRef = useRef(null);
+  const coverInputRef = useRef(null);
 
   // Determine which user profile to show
   const isOwnProfile = !id || (user && user.id === id);
@@ -116,15 +69,13 @@ function ProfilePage({ user, onLogout, onCreatePost }) {
         setShowCropModal(true);
       });
       reader.readAsDataURL(file);
+      e.target.value = ''; // Reset input
     }
   };
 
-
-
-  const handleSaveAvatar = async () => {
+  const handleSaveAvatar = async (croppedBlob) => {
     try {
       setUploadingAvatar(true);
-      const croppedBlob = await getCroppedImg(imageSrc, croppedAreaPixels);
       const file = new File([croppedBlob], "avatar.jpg", { type: "image/jpeg" });
       
       const url = await uploadImageToImgBB(file);
@@ -145,6 +96,42 @@ function ProfilePage({ user, onLogout, onCreatePost }) {
       alert('头像上传失败，请重试');
     } finally {
       setUploadingAvatar(false);
+    }
+  };
+
+  const handleCoverChange = async (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.addEventListener('load', () => {
+        setCoverImageSrc(reader.result);
+        setShowCoverCropModal(true);
+      });
+      reader.readAsDataURL(file);
+      e.target.value = ''; // Reset input
+    }
+  };
+
+  const handleSaveCover = async (croppedBlob) => {
+    try {
+      setUploadingCover(true);
+      const file = new File([croppedBlob], "cover.jpg", { type: "image/jpeg" });
+      
+      const url = await uploadImageToImgBB(file);
+      const updatedUser = await updateUser(user.id, { coverImage: url });
+      
+      if (isOwnProfile) {
+        localStorage.setItem('raddit-user', JSON.stringify(updatedUser));
+        window.location.reload();
+      } else {
+        setFetchedUser(updatedUser);
+      }
+      setShowCoverCropModal(false);
+    } catch (error) {
+      console.error('Failed to upload cover:', error);
+      alert('封面上传失败，请重试');
+    } finally {
+      setUploadingCover(false);
     }
   };
 
@@ -347,11 +334,30 @@ function ProfilePage({ user, onLogout, onCreatePost }) {
       <div className="profile-container">
         {/* Header Card */}
         <div className="profile-header-card">
-          <div className="profile-cover">
+          <div 
+            className="profile-cover" 
+            style={{ 
+              backgroundImage: profileUser?.coverImage ? `url(${profileUser.coverImage})` : 'none',
+              backgroundColor: profileUser?.coverImage ? 'transparent' : '#e1e4e8'
+            }}
+          >
             {isOwnProfile && (
-              <button className="upload-cover-btn">
-                📷 上传封面图片
-              </button>
+              <>
+                <button 
+                  className="upload-cover-btn"
+                  onClick={() => coverInputRef.current.click()}
+                  disabled={uploadingCover}
+                >
+                  {uploadingCover ? '上传中...' : '📷 上传封面图片'}
+                </button>
+                <input 
+                  type="file" 
+                  ref={coverInputRef} 
+                  onChange={handleCoverChange} 
+                  accept="image/*" 
+                  style={{ display: 'none' }} 
+                />
+              </>
             )}
           </div>
           <div className="profile-info-wrapper">
@@ -413,18 +419,11 @@ function ProfilePage({ user, onLogout, onCreatePost }) {
                 <>
                   {userPosts.length > 0 ? (
                     userPosts.map(post => (
-                      <div key={post.id} className="profile-list-item">
-                        <div className="item-title" onClick={() => navigate(`/post/${post.id}`)}>
-                          {post.title}
-                        </div>
-                        <div className="item-content-preview">
-                          {post.content.length > 100 ? post.content.substring(0, 100) + '...' : post.content}
-                        </div>
-                        <div className="item-meta">
-                          <span>{new Date(post.createdAt).toLocaleString('zh-CN')}</span>
-                          <span>{post.heat || 0} 热度</span>
-                        </div>
-                      </div>
+                      <FeedPostCard 
+                        key={post.id} 
+                        post={post} 
+                        user={user}
+                      />
                     ))
                   ) : (
                     <div className="empty-state">暂无发布的内容</div>
@@ -477,7 +476,13 @@ function ProfilePage({ user, onLogout, onCreatePost }) {
                       return (
                         <div key={`${reaction.targetId}-${reaction.emoji}-${idx}`} className="profile-list-item" onClick={() => navigate(`/post/${reaction.postId}`)}>
                           <div className="item-type-label">
-                            <span className="reaction-emoji" style={{ fontSize: '20px', marginRight: '8px' }}>{reaction.emoji}</span>
+                            <span className="reaction-emoji" style={{ fontSize: '20px', marginRight: '8px', display: 'inline-flex', alignItems: 'center' }}>
+                              {reaction.emoji === CUSTOM_REACTION_KEY ? (
+                                <img src={customSticker1} alt="sticker" style={{ width: '24px', height: '24px' }} />
+                              ) : (
+                                reaction.emoji
+                              )}
+                            </span>
                             {typeLabel}
                           </div>
                           <div className="item-content-preview">
@@ -633,43 +638,25 @@ function ProfilePage({ user, onLogout, onCreatePost }) {
       )}
 
       {showCropModal && (
-        <div className="modal-overlay">
-          <div className="modal-content crop-avatar-modal">
-            <div className="modal-header">
-              <h3>裁剪头像</h3>
-              <button className="close-btn" onClick={() => setShowCropModal(false)}>×</button>
-            </div>
-            <div className="modal-body">
-              {imageSrc && (
-                <div className="crop-container">
-                  <Cropper
-                    image={imageSrc}
-                    crop={crop}
-                    zoom={zoom}
-                    aspect={1}
-                    onCropChange={setCrop}
-                    onZoomChange={setZoom}
-                    onCropComplete={(crop, pixelCrop) => setCroppedAreaPixels(pixelCrop)}
-                    cropShape="round"
-                    showGrid={true}
-                    styles={{
-                      cropArea: {
-                        borderRadius: '50%',
-                        boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.5)',
-                      },
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-            <div className="modal-footer">
-              <button className="cancel-btn" onClick={() => setShowCropModal(false)} disabled={uploadingAvatar}>取消</button>
-              <button className="confirm-btn" onClick={handleSaveAvatar} disabled={uploadingAvatar}>
-                {uploadingAvatar ? '上传中...' : '上传头像'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ImageCropperModal
+          imageSrc={imageSrc}
+          onCancel={() => setShowCropModal(false)}
+          onCropComplete={handleSaveAvatar}
+          uploading={uploadingAvatar}
+          aspect={1}
+          cropShape="round"
+        />
+      )}
+
+      {showCoverCropModal && (
+        <ImageCropperModal
+          imageSrc={coverImageSrc}
+          onCancel={() => setShowCoverCropModal(false)}
+          onCropComplete={handleSaveCover}
+          uploading={uploadingCover}
+          aspect={25 / 6}
+          cropShape="rect"
+        />
       )}
     </div>
   );
