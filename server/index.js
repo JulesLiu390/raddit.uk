@@ -15,7 +15,7 @@ const User = require('./models/User');
 const Message = require('./models/Message');
 const Topic = require('./models/Topic');
 const authMiddleware = require('./middleware/auth');
-const { generateBotReply } = require('./services/geminiBot');
+const { generateBotReply, startBot } = require('./services/geminiBot');
 
 const app = express();
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/raddit';
@@ -30,7 +30,10 @@ const JWT_SECRET = process.env.JWT_SECRET || 'raddit-secret-key-change-this-in-p
 
 // Connect to MongoDB
 mongoose.connect(MONGODB_URI)
-  .then(() => console.log('Connected to MongoDB'))
+  .then(() => {
+    console.log('Connected to MongoDB');
+    startBot();
+  })
   .catch(err => console.error('MongoDB connection error:', err));
 
 // 如果部署在反向代理后面，需要显式开启 trust proxy 才能拿到真实 IP

@@ -267,9 +267,11 @@ async function pollForMentions() {
 
 // Start polling loop (every 5 seconds)
 // Only start if we are in a running server context (not during build/test)
-if (process.env.NODE_ENV !== 'test') {
-  setInterval(pollForMentions, 5000);
-  console.log('[Bot] Active polling started.');
+function startBot() {
+  if (process.env.NODE_ENV !== 'test') {
+    setInterval(pollForMentions, 5000);
+    console.log('[Bot] Active polling started.');
+  }
 }
 
-module.exports = { generateBotReply };
+module.exports = { generateBotReply, startBot };
