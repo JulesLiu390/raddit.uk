@@ -121,7 +121,7 @@ function HomePage({ user, onLogout, onCreatePost, type = 'all' }) {
               )}
 
               {!loading && !error && posts.map((post, index) => (
-                type === 'recommend' ? (
+                (type === 'recommend' || type === 'following') ? (
                   <FeedPostCard 
                     key={post.id} 
                     post={post} 

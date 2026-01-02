@@ -61,6 +61,7 @@
   color: #666;
 }
 
+.answer-content img,
 .answer-content .wmde-markdown img {
   max-width: 50%;
   height: auto;
@@ -252,6 +253,14 @@
   margin-bottom: 20px;
   padding-bottom: 20px;
   border-bottom: 1px solid #f0f0f0;
+}
+
+.post-content img {
+  max-width: 50%;
+  height: auto;
+  border-radius: 6px;
+  margin: 10px 0;
+  display: block;
 }
 
 .post-meta-bar {

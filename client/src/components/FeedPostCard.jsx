@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { BsCaretUpFill, BsCaretDownFill, BsChatText, BsShare, BsStar, BsThreeDots, BsPlus } from 'react-icons/bs';
+import { BsCaretUpFill, BsCaretDownFill, BsChatText, BsShare, BsStar, BsThreeDots, BsPlus, BsFire } from 'react-icons/bs';
 import SimpleEmojiPicker from './SimpleEmojiPicker';
 import FeedCommentNode from './FeedCommentNode';
 import customSticker1 from '../assets/customSticker1.png';
@@ -150,6 +150,9 @@ function FeedPostCard({ post, user }) {
         )}
         <span className="author-name">{post.author}</span>
         <span className="author-bio">{post.authorBio || '用户'}</span>
+        <span className="post-date" style={{ marginLeft: 'auto', color: '#8590a6', fontSize: '12px' }}>
+          {new Date(post.createdAt).toLocaleDateString()}
+        </span>
       </div>
 
       <div className="feed-post-content-wrapper">
@@ -242,6 +245,10 @@ function FeedPostCard({ post, user }) {
               </div>
             )}
           </div>
+        </div>
+
+        <div className="heat-display" style={{ display: 'flex', alignItems: 'center', marginRight: '16px', color: '#ff4500', fontSize: '14px', fontWeight: '500' }}>
+             <BsFire style={{ marginRight: '4px' }} /> {post.heat || 0} 热度
         </div>
 
         <button className="action-btn comment-btn" onClick={toggleComments}>

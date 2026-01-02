@@ -106,6 +106,9 @@ function PostCard({ post, rank, isNew, user, onDelete }) {
             <span className="stat-icon"><BsFire /></span>
             <span className="heat-value">{formatHeat(post.votes || post.heat || 0)}</span>
           </span>
+          <span className="stat-btn" style={{ cursor: 'default', color: '#8590a6' }}>
+            {new Date(post.createdAt).toLocaleDateString()}
+          </span>
           <button className="stat-btn share-btn">
             <span className="stat-icon"><BsShare /></span>
             <span>分享</span>

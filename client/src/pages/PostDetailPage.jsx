@@ -94,6 +94,12 @@ const CommentNode = ({
   const [expanded, setExpanded] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const pickerRef = useRef(null);
+
+  const countDescendants = (node) => {
+    if (!node.children || node.children.length === 0) return 0;
+    return node.children.reduce((acc, child) => acc + 1 + countDescendants(child), 0);
+  };
+  const totalRepliesCount = countDescendants(message);
   
   const hasChildren = message.children && message.children.length > 0;
   const depth = message.depth || (message.parentId ? 2 : 1);
@@ -459,7 +465,7 @@ const CommentNode = ({
         <div className="comment-children-container">
           {!expanded ? (
             <button className="expand-replies-btn" onClick={() => setExpanded(true)}>
-              展开 {message.children.length} 条回复
+              展开 {totalRepliesCount} 条回复
             </button>
           ) : (
             <div className="comment-children">
@@ -500,7 +506,7 @@ function PostDetailPage({ user, onLogout, onCreatePost }) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isScrolled, setIsScrolled] = useState(false);
-  const [sortBy, setSortBy] = useState('time'); // 'time' or 'heat'
+  const [sortBy, setSortBy] = useState('time_asc'); // Default: Oldest to Newest
   const [onlyAuthor, setOnlyAuthor] = useState(false);
   const [showAnswerForm, setShowAnswerForm] = useState(false);
   const [answerContent, setAnswerContent] = useState('');
@@ -909,33 +915,15 @@ function PostDetailPage({ user, onLogout, onCreatePost }) {
   };
 
   // 根据排序和筛选条件处理消息
-  const getFilteredMessages = () => {
-    let filtered = [...messages];
-
-    // 筛选：只看楼主
-    if (onlyAuthor && post) {
-      filtered = filtered.filter(m => m.author === post.author);
-    }
-
-    // 排序
-    if (sortBy === 'heat') {
-      filtered.sort((a, b) => (b.upvotes || 0) - (a.upvotes || 0));
-    } else {
-      filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    }
-
-    return filtered;
-  };
-
   const buildThreads = () => {
-    const filtered = getFilteredMessages();
+    // 1. Build the full tree first (so we don't lose children when filtering roots)
     const map = new Map();
-    filtered.forEach(m => {
+    messages.forEach(m => {
       map.set(m.id, { ...m, children: [] });
     });
 
     const roots = [];
-    filtered.forEach(m => {
+    messages.forEach(m => {
       const node = map.get(m.id);
       if (m.parentId && map.get(m.parentId)) {
         map.get(m.parentId).children.push(node);
@@ -944,20 +932,50 @@ function PostDetailPage({ user, onLogout, onCreatePost }) {
       }
     });
 
+    // 2. Filter Roots (Only Author)
+    let filteredRoots = roots;
+    if (onlyAuthor && post) {
+      filteredRoots = roots.filter(root => root.authorId === post.authorId);
+    }
+
+    // 3. Helper to calculate heat
+    const countDescendants = (node) => {
+      if (!node.children || node.children.length === 0) return 0;
+      return node.children.reduce((acc, child) => acc + 1 + countDescendants(child), 0);
+    };
+
+    const calculateHeat = (node) => {
+      const reactionCount = Object.values(node.reactions || {}).reduce((acc, arr) => acc + arr.length, 0);
+      const replyCount = countDescendants(node);
+      return reactionCount + (replyCount * 5);
+    };
+
+    // 4. Sort Roots
     const sortFn = (a, b) => {
-      if (sortBy === 'heat') {
-        return (b.upvotes || 0) - (a.upvotes || 0);
+      switch (sortBy) {
+        case 'heat_asc':
+          return calculateHeat(a) - calculateHeat(b);
+        case 'heat_desc':
+          return calculateHeat(b) - calculateHeat(a);
+        case 'time_desc':
+          return new Date(b.createdAt) - new Date(a.createdAt);
+        case 'time_asc':
+        default:
+          return new Date(a.createdAt) - new Date(b.createdAt);
       }
-      return new Date(b.createdAt) - new Date(a.createdAt);
     };
 
-    const sortTree = (list) => {
-      list.sort(sortFn);
-      list.forEach(n => sortTree(n.children));
+    filteredRoots.sort(sortFn);
+
+    // 5. Sort Children (Always Chronological Old -> New for readability)
+    const sortChildren = (list) => {
+      list.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+      list.forEach(n => sortChildren(n.children));
     };
 
-    sortTree(roots);
-    return roots;
+    filteredRoots.forEach(root => sortChildren(root.children));
+
+    return filteredRoots;
   };
 
   // 计算一级回复数量（不包括嵌套评论）
@@ -965,6 +983,14 @@ function PostDetailPage({ user, onLogout, onCreatePost }) {
     return messages.filter(m => !m.parentId).length;
   };
 
+  // 计算某个一级回复下的所有子评论数量（递归或扁平查找）
+  // Since we have a flattened list in `messages`, we can just count by root parentId if we had it stored.
+  // But currently `parentId` only points to immediate parent.
+  // However, `buildThreads` builds a tree. We can use that or just count in the tree.
+  // Actually, for the UI "X条回复", we usually want the count of children for that specific root comment.
+  // In the flattened structure (depth=2), all replies point to the root comment as parentId.
+  // So `messages.filter(m => m.parentId === rootId).length` should work for the new flattened structure.
+  
   const canReply = (message) => {
     const depth = message.depth || (message.parentId ? 2 : 1);
     return depth < 3;
@@ -1320,10 +1346,25 @@ function PostDetailPage({ user, onLogout, onCreatePost }) {
             <span className="answer-count">{getTopLevelReplyCount()} 个回答</span>
             <div className="answer-controls">
               <div className="sort-dropdown">
-                <button className="sort-btn" onClick={() => setSortBy(sortBy === 'time' ? 'heat' : 'time')}>
-                  {sortBy === 'time' ? '默认排序' : '热度排序'} <BsCaretDownFill className="icon-dropdown" />
-                </button>
-                {/* 排序下拉菜单可以后续扩展 */}
+                <select 
+                  className="sort-select" 
+                  value={sortBy} 
+                  onChange={(e) => setSortBy(e.target.value)}
+                  style={{ 
+                    padding: '4px 8px', 
+                    borderRadius: '4px', 
+                    border: '1px solid #ddd',
+                    marginRight: '8px',
+                    fontSize: '14px',
+                    color: '#666',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="time_asc">时间 (旧→新)</option>
+                  <option value="time_desc">时间 (新→旧)</option>
+                  <option value="heat_desc">热度 (高→低)</option>
+                  <option value="heat_asc">热度 (低→高)</option>
+                </select>
               </div>
               <button 
                 className={`author-filter-btn ${onlyAuthor ? 'active' : ''}`}
