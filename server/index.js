@@ -180,8 +180,13 @@ app.get('/api/discovery', async (req, res) => {
   }
 });
 
-// 托管前端静态文件
-app.use(express.static(path.join(__dirname, '../client/dist')));
+// 托管前端静态文件 (仅生产环境)
+if (process.env.NODE_ENV === 'production') {
+  console.log('Production mode: Serving static files from ../client/dist');
+  app.use(express.static(path.join(__dirname, '../client/dist')));
+} else {
+  console.log('Development mode: Static file serving disabled');
+}
 
 // --- Topic APIs ---
 
@@ -709,7 +714,7 @@ app.put('/api/users/:id', async (req, res) => {
       return res.status(403).json({ message: 'Unauthorized' });
     }
 
-    const { bio, name, picture, coverImage } = req.body;
+    const { bio, name, picture, coverImage, isRegistrationComplete } = req.body;
     const updateData = {};
     
     const currentUser = await User.findOne({ googleId: req.params.id });
@@ -731,6 +736,7 @@ app.put('/api/users/:id', async (req, res) => {
     if (bio !== undefined) updateData.bio = bio;
     if (picture !== undefined) updateData.picture = picture;
     if (coverImage !== undefined) updateData.coverImage = coverImage;
+    if (isRegistrationComplete !== undefined) updateData.isRegistrationComplete = isRegistrationComplete;
 
     const user = await User.findOneAndUpdate(
       { googleId: req.params.id },
@@ -932,6 +938,7 @@ app.post('/api/auth/google', async (req, res) => {
 
     // 保存或更新用户信息
     let user = await User.findOne({ googleId: userProfile.googleId });
+    let isNewUser = false;
     
     if (user) {
       // Update existing user
@@ -939,11 +946,18 @@ app.post('/api/auth/google', async (req, res) => {
       // Only update lastLogin
       user.lastLogin = new Date();
       await user.save();
+      
+      // If user exists but registration is not complete, treat as new user
+      if (!user.isRegistrationComplete) {
+        isNewUser = true;
+      }
     } else {
       // Create new user
+      isNewUser = true;
       user = await User.create({
         ...userProfile,
-        lastLogin: new Date()
+        lastLogin: new Date(),
+        isRegistrationComplete: false // Explicitly set to false
       });
     }
 
@@ -965,6 +979,7 @@ app.post('/api/auth/google', async (req, res) => {
     res.json({
       token: sessionToken,
       user: userObj,
+      isNewUser
     });
   } catch (err) {
     console.error('Google auth failed', err);
@@ -1460,10 +1475,12 @@ app.delete('/api/topics/:id', async (req, res) => {
 
 
 
-// 处理所有其他请求，返回 index.html (支持前端路由)
-app.get(/(.*)/, (req, res) => {
-  res.sendFile(path.join(__dirname, '../client/dist/index.html'));
-});
+// 处理所有其他请求，返回 index.html (支持前端路由) - 仅生产环境
+if (process.env.NODE_ENV === 'production') {
+  app.get(/(.*)/, (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+  });
+}
 function getHttpsOptions() {
   if (!SSL_KEY_PATH || !SSL_CERT_PATH) return null;
   try {
@@ -1495,8 +1512,8 @@ if (httpsOptions) {
     console.log('已启用 SSL，确保前端通过 HTTPS 访问');
   });
 } else {
-  server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`HTTP Server is running on http://0.0.0.0:${PORT} (Using MongoDB)`);
+  server = app.listen(PORT, () => {
+    console.log(`HTTP Server is running on http://localhost:${PORT} (Using MongoDB)`);
     console.log(`Accessible externally at http://173.206.210.120:${PORT}`);
   });
 }
@@ -1635,108 +1652,3 @@ async function enrichMessagesWithUser(messages) {
   return Array.isArray(messages) ? enriched : enriched[0];
 }
 
-// 删除帖子
-app.delete('/api/posts/:id', async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ message: '请先登录' });
-    }
-
-    const post = await Post.findById(req.params.id);
-    if (!post) {
-      return res.status(404).json({ message: 'Post not found' });
-    }
-
-    console.log(`[Delete Post] User: ${req.user.googleId} (${req.user.role}), Post Author: ${post.authorId}`);
-
-    // Check permission: Admin or Author
-    // Note: post.authorId is a String (googleId), req.user.googleId is a String.
-    // But sometimes post.authorId might be missing or null if created by anonymous/legacy.
-    // Also handle case where post.authorId is ObjectId (if schema changed).
-    
-    // Ensure strict string comparison and trim
-    const currentUserId = String(req.user.googleId).trim();
-    const postAuthorId = post.authorId ? String(post.authorId).trim() : '';
-
-    const isAuthor = postAuthorId && (postAuthorId === currentUserId);
-    const isAdmin = req.user.role === 'admin';
-
-    console.log(`[Delete Post] isAuthor: ${isAuthor}, isAdmin: ${isAdmin}`);
-
-    if (!isAdmin && !isAuthor) {
-      return res.status(403).json({ message: `无权删除此帖子 (User: ${currentUserId}, Author: ${postAuthorId})` });
-    }
-
-    await Post.findByIdAndDelete(req.params.id);
-    // Also delete associated messages
-    await Message.deleteMany({ postId: req.params.id });
-    
-    res.json({ message: 'Post deleted successfully' });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// 删除消息/回复
-app.delete('/api/messages/:id', async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ message: '请先登录' });
-    }
-
-    const message = await Message.findById(req.params.id);
-    if (!message) {
-      return res.status(404).json({ message: 'Message not found' });
-    }
-
-    // Check permission: Admin or Author
-    if (req.user.role !== 'admin' && req.user.googleId !== message.authorId) {
-      return res.status(403).json({ message: '无权删除此回复' });
-    }
-
-    await Message.findByIdAndDelete(req.params.id);
-    
-    // Delete children recursively
-    const deleteChildren = async (parentId) => {
-      const children = await Message.find({ parentId });
-      for (const child of children) {
-        await deleteChildren(child._id);
-        await Message.findByIdAndDelete(child._id);
-      }
-    };
-    
-    await deleteChildren(req.params.id);
-
-    res.json({ message: 'Message deleted successfully' });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// 删除话题
-app.delete('/api/topics/:id', async (req, res) => {
-  try {
-    if (!req.user || req.user.role !== 'admin') {
-      return res.status(403).json({ message: '需要管理员权限' });
-    }
-
-    const topic = await Topic.findByIdAndDelete(req.params.id);
-    if (!topic) {
-      return res.status(404).json({ message: 'Topic not found' });
-    }
-
-    // Optionally remove this topic from all posts?
-    // await Post.updateMany({}, { $pull: { topics: { id: req.params.id } } });
-
-    res.json({ message: 'Topic deleted successfully' });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-
-
-// 处理所有其他请求，返回 index.html (支持前端路由)
-app.get(/(.*)/, (req, res) => {
-  res.sendFile(path.join(__dirname, '../client/dist/index.html'));
-});

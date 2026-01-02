@@ -61,6 +61,10 @@ const userSchema = new mongoose.Schema({
   coverImage: {
     type: String,
     default: ''
+  },
+  isRegistrationComplete: {
+    type: Boolean,
+    default: false
   }
 });
 

@@ -1,10 +1,10 @@
 import axios from 'axios';
 
-// Use localhost for development, or the production URL if deployed
-const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const API_URL = isLocal
-  ? 'http://localhost:8848/api' 
-  : 'https://raddit.uk:8443/api';
+// Use relative path for HTTPS (production/served by backend), or port 8848 for development
+const isHttps = window.location.protocol === 'https:';
+const API_URL = isHttps
+  ? '/api'
+  : `http://${window.location.hostname}:8848/api`;
 
 const api = axios.create({
   baseURL: API_URL,

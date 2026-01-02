@@ -13,6 +13,8 @@ import FavoritesPage from './pages/FavoritesPage';
 import InteractionsPage from './pages/InteractionsPage';
 import NotFoundPage from './pages/NotFoundPage';
 import CreatePostModal from './components/CreatePostModal';
+import UserSetupModal from './components/UserSetupModal';
+import TermsModal from './components/TermsModal';
 import { loginWithGoogle, createPost } from './api';
 import './App.css';
 
@@ -32,6 +34,8 @@ function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showUserSetupModal, setShowUserSetupModal] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
 
   const handleGoogleCredential = useCallback(async (credential) => {
     if (!credential) {
@@ -48,10 +52,21 @@ function App() {
         localStorage.setItem(TOKEN_STORAGE_KEY, data.token);
       }
       setAuthError('');
-      navigate('/');
+      
+      if (data.isNewUser) {
+        // New user flow: Terms -> User Setup
+        setShowTermsModal(true);
+      } else {
+        navigate('/');
+      }
     } catch (err) {
       console.error('Google 登录失败', err);
       setAuthError(err.response?.data?.message || '登录失败，请重试');
+      
+      // 如果登录失败（例如用户不存在），清除本地状态以防止死循环
+      localStorage.removeItem(USER_STORAGE_KEY);
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
+      setUser(null);
     } finally {
       setAuthLoading(false);
     }
@@ -129,6 +144,35 @@ function App() {
           user={user}
           onClose={() => setShowCreateModal(false)} 
           onSubmit={handleCreatePost} 
+        />
+      )}
+
+      {showTermsModal && (
+        <TermsModal
+          onAgree={() => {
+            setShowTermsModal(false);
+            setShowUserSetupModal(true);
+          }}
+          onClose={() => {
+            setShowTermsModal(false);
+            handleLogout(); // Logout if terms are declined
+          }}
+        />
+      )}
+
+      {showUserSetupModal && (
+        <UserSetupModal 
+          user={user}
+          onBack={() => {
+            setShowUserSetupModal(false);
+            setShowTermsModal(true);
+          }}
+          onComplete={(updatedUser) => {
+            setUser(updatedUser);
+            localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
+            setShowUserSetupModal(false);
+            navigate('/');
+          }} 
         />
       )}
     </div>
