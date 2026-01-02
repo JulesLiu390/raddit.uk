@@ -3,7 +3,7 @@ import axios from 'axios';
 // Use localhost for development, or the production URL if deployed
 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const API_URL = isLocal
-  ? 'https://localhost:8443/api' 
+  ? 'http://localhost:8848/api' 
   : 'https://raddit.uk:8443/api';
 
 const api = axios.create({
