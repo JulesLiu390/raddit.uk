@@ -31,6 +31,8 @@ import { getPost, getPostMessages, createMessage, toggleFollowPost, toggleFollow
 import './PostDetailPage.css';
 import customSticker1 from '../assets/customSticker1.png';
 import { useHeader } from '../context/HeaderContext';
+import { useMention } from '../hooks/useMention';
+import MentionList from '../components/MentionList';
 
 // --- 自定义表情配置 ---
 const CUSTOM_REACTION_KEY = 'custom_sticker_1';
@@ -83,7 +85,10 @@ const CommentNode = ({
   submitting, 
   handleSubmitAnswer,
   handleReaction,
-  handleDeleteMessage
+  handleDeleteMessage,
+  replyMentionResults,
+  onSelectReplyMention,
+  handleReplyChange
 }) => {
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState(false);
@@ -92,7 +97,8 @@ const CommentNode = ({
   
   const hasChildren = message.children && message.children.length > 0;
   const depth = message.depth || (message.parentId ? 2 : 1);
-  const canReply = depth < 3;
+  // Flattened structure allows replying to any comment
+  const canReply = true; 
   const isNested = depth > 1;
 
   // Close picker when clicking outside
@@ -400,34 +406,41 @@ const CommentNode = ({
             )}
           </div>
           <form onSubmit={(e) => handleSubmitAnswer(e, message)}>
-            <MDEditor
-              value={replyContent}
-              onChange={setReplyContent}
-              preview="edit"
-              height={150}
-              visibleDragbar={false}
-              hideToolbar={false}
-              autoFocus
-              disabled={submitting}
-              textareaProps={{
-                onPaste: (e) => handlePaste(e, setReplyContent)
-              }}
-              commands={[
-                commands.bold,
-                commands.italic,
-                commands.strikethrough,
-                commands.hr,
-                commands.divider,
-                commands.link,
-                imageUploadCommand,
-                commands.divider,
-                commands.codeBlock,
-                commands.quote,
-                commands.divider,
-                commands.unorderedListCommand,
-                commands.orderedListCommand,
-              ]}
-            />
+            <div style={{ position: 'relative' }}>
+              <MDEditor
+                value={replyContent}
+                onChange={handleReplyChange}
+                preview="edit"
+                height={150}
+                visibleDragbar={false}
+                hideToolbar={false}
+                autoFocus
+                disabled={submitting}
+                textareaProps={{
+                  onPaste: (e) => handlePaste(e, setReplyContent)
+                }}
+                commands={[
+                  commands.bold,
+                  commands.italic,
+                  commands.strikethrough,
+                  commands.hr,
+                  commands.divider,
+                  commands.link,
+                  imageUploadCommand,
+                  commands.divider,
+                  commands.codeBlock,
+                  commands.quote,
+                  commands.divider,
+                  commands.unorderedListCommand,
+                  commands.orderedListCommand,
+                ]}
+              />
+              <MentionList 
+                results={replyMentionResults} 
+                onSelect={onSelectReplyMention}
+                style={{ bottom: '100%', left: 0 }}
+              />
+            </div>
             <div className="answer-form-actions">
               <button type="button" className="cancel-btn" onClick={() => {
                 setReplyTarget(null);
@@ -463,6 +476,9 @@ const CommentNode = ({
                   handleSubmitAnswer={handleSubmitAnswer}
                   handleReaction={handleReaction}
                   handleDeleteMessage={handleDeleteMessage}
+                  replyMentionResults={replyMentionResults}
+                  onSelectReplyMention={onSelectReplyMention}
+                  handleReplyChange={handleReplyChange}
                 />
               ))}
               <button className="collapse-replies-btn" onClick={() => setExpanded(false)}>
@@ -496,42 +512,17 @@ function PostDetailPage({ user, onLogout, onCreatePost }) {
   const answerFormRef = useRef(null);
 
   // Mention Logic
-  const [mentionQuery, setMentionQuery] = useState(null);
-  const [mentionResults, setMentionResults] = useState([]);
-  const searchTimeoutRef = useRef(null);
+  const answerMention = useMention();
+  const replyMention = useMention();
 
   const handleAnswerChange = (val) => {
     setAnswerContent(val);
-    
-    // Detect @ at the end
-    const match = val && val.match(/(?:^|\s)@(\S*)$/);
-    if (match) {
-      const query = match[1];
-      setMentionQuery(query);
-      
-      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-      searchTimeoutRef.current = setTimeout(async () => {
-         try {
-           const results = await searchUsers(query);
-           setMentionResults(results);
-         } catch (e) {
-           console.error(e);
-         }
-      }, 300);
-    } else {
-      setMentionQuery(null);
-      setMentionResults([]);
-    }
+    answerMention.checkMention(val);
   };
 
-  const handleSelectMention = (user) => {
-    const newValue = answerContent.replace(/(?:^|\s)@(\S*)$/, (match) => {
-        const prefix = match.startsWith(' ') ? ' ' : '';
-        return `${prefix}[@${user.name}](/profile/${user.googleId}) `;
-    });
-    setAnswerContent(newValue);
-    setMentionQuery(null);
-    setMentionResults([]);
+  const handleReplyChange = (val) => {
+    setReplyContent(val);
+    replyMention.checkMention(val);
   };
 
   // State for custom reaction burst
@@ -1277,41 +1268,11 @@ function PostDetailPage({ user, onLogout, onCreatePost }) {
                 )}
               </div>
               <form onSubmit={handleSubmitAnswer} style={{ position: 'relative' }}>
-                {mentionQuery !== null && mentionResults.length > 0 && (
-                  <div className="mention-list" style={{
-                    position: 'absolute',
-                    bottom: '100%',
-                    left: 0,
-                    backgroundColor: 'white',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                    zIndex: 1000,
-                    maxHeight: '200px',
-                    overflowY: 'auto',
-                    width: '200px'
-                  }}>
-                    {mentionResults.map(u => (
-                      <div 
-                        key={u.googleId}
-                        onClick={() => handleSelectMention(u)}
-                        style={{
-                          padding: '8px 12px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          borderBottom: '1px solid #eee'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f5f5f5'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
-                      >
-                        <img src={u.picture} alt={u.name} style={{width: 20, height: 20, borderRadius: '50%'}}/>
-                        <span>{u.name}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <MentionList 
+                  results={answerMention.results} 
+                  onSelect={(user) => answerMention.insertMention(user, answerContent, setAnswerContent)}
+                  style={{ bottom: '100%', left: 0 }}
+                />
                 <MDEditor
                   value={answerContent}
                   onChange={handleAnswerChange}
@@ -1388,6 +1349,9 @@ function PostDetailPage({ user, onLogout, onCreatePost }) {
                 handleSubmitAnswer={handleSubmitAnswer}
                 handleReaction={handleReaction}
                 handleDeleteMessage={handleDeleteMessage}
+                replyMentionResults={replyMention.results}
+                onSelectReplyMention={(user) => replyMention.insertMention(user, replyContent, setReplyContent)}
+                handleReplyChange={handleReplyChange}
               />
             ))}
           </div>

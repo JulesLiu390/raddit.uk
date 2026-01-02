@@ -6,6 +6,7 @@ const fsSync = require('fs');
 const mongoose = require('mongoose');
 const { OAuth2Client } = require('google-auth-library');
 const jwt = require('jsonwebtoken');
+const PinyinMatch = require('pinyin-match');
 require('dotenv').config();
 
 // Models
@@ -531,14 +532,38 @@ app.post('/api/posts/:postId/messages', async (req, res) => {
     const parentId = req.body.parentId || null;
 
     let parent = null;
+    let effectiveParentId = parentId;
+    let depth = 1;
+    let replyToUserId = null;
+    let replyToName = null;
+
     if (parentId) {
       parent = await Message.findById(parentId);
       if (!parent || parent.postId !== req.params.postId) {
         return res.status(400).json({ message: 'Parent message not found or not in this post' });
       }
+      
+      // Flattening Logic:
+      // If parent is already a reply (depth >= 1), we attach to ITS parent (the root) if it exists,
+      // or if it is a root comment (depth 1), we attach to it.
+      // Actually, simpler: 
+      // If parent.depth == 1 -> It is root. New message is child of it.
+      // If parent.depth >= 2 -> It is a reply. New message is sibling of it (child of its parent).
+      
       const parentDepth = parent.depth || 1;
-      if (parentDepth >= 3) {
-        return res.status(400).json({ message: 'Max reply depth reached' });
+      
+      if (parentDepth >= 2) {
+          // Replying to a reply -> Flatten to level 2
+          effectiveParentId = parent.parentId; 
+          depth = 2;
+          replyToUserId = parent.authorId;
+          replyToName = parent.author;
+      } else {
+          // Replying to a root comment -> Level 2
+          effectiveParentId = parent._id;
+          depth = 2;
+          replyToUserId = parent.authorId;
+          replyToName = parent.author;
       }
     }
 
@@ -557,18 +582,16 @@ app.post('/api/posts/:postId/messages', async (req, res) => {
       authorId = null;
     }
 
-    const depth = parent ? (parent.depth || 1) + 1 : 1;
-
     const newMessage = new Message({
       postId: req.params.postId,
       content: req.body.content,
       author: authorName,
       authorAvatar: authorAvatar,
       authorId: authorId,
-      parentId: parentId,
+      parentId: effectiveParentId,
       depth: depth,
-      replyToUserId: parent ? (parent.authorId || parent.author || '') : null,
-      replyToName: parent ? (parent.author || '') : null,
+      replyToUserId: replyToUserId,
+      replyToName: replyToName,
       authorBio: '',
       isVerified: false,
       upvotes: 0
@@ -645,13 +668,16 @@ app.get('/api/users/search', async (req, res) => {
     const { q } = req.query;
     if (!q) return res.json([]);
 
-    const users = await User.find({
-      name: { $regex: q, $options: 'i' }
-    })
-    .select('googleId name picture')
-    .limit(10);
+    // Fetch all users (assuming small user base) and filter in memory for pinyin support
+    // For large scale, consider adding a pinyin field to User model and indexing it
+    const users = await User.find({}).select('googleId name picture');
+    
+    const matchedUsers = users.filter(user => 
+      PinyinMatch.match(user.name, q)
+    );
 
-    res.json(users);
+    // Return top 10 results
+    res.json(matchedUsers.slice(0, 10));
   } catch (err) {
     console.error('Search users error:', err);
     res.status(500).json({ message: 'Search failed' });

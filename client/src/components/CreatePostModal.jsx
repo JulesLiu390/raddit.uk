@@ -5,6 +5,8 @@ import { getTopics, createTopic, getUserFollowedTopics } from '../api';
 import { BsPlus, BsX } from 'react-icons/bs';
 import PinyinMatch from 'pinyin-match';
 import { pinyin } from 'pinyin-pro';
+import { useMention } from '../hooks/useMention';
+import MentionList from './MentionList';
 import '@uiw/react-md-editor/markdown-editor.css';
 import '@uiw/react-markdown-preview/markdown.css';
 import './CreatePostModal.css';
@@ -42,6 +44,18 @@ function CreatePostModal({ onClose, onSubmit, user, initialTopic }) {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loadingTopics, setLoadingTopics] = useState(false);
   const [followedTopics, setFollowedTopics] = useState([]);
+
+  // Mention Logic
+  const { 
+    results: mentionResults, 
+    checkMention, 
+    insertMention 
+  } = useMention();
+
+  const handleContentChange = (val) => {
+    setContent(val);
+    checkMention(val);
+  };
 
   useEffect(() => {
     loadTopics();
@@ -404,34 +418,39 @@ function CreatePostModal({ onClose, onSubmit, user, initialTopic }) {
 
           <div className="form-group">
             <label htmlFor="content">内容</label>
-            <MDEditor
-              value={content}
-              onChange={setContent}
-              preview="edit"
-              hideToolbar={false}
-              textareaProps={{
-                onPaste: handlePaste
-              }}
-              commands={[
-                commands.bold,
-                commands.italic,
-                commands.strikethrough,
-                commands.hr,
-                commands.title,
-                commands.divider,
-                commands.link,
-                imageUploadCommand,
-                commands.code,
-                commands.codeBlock,
-                commands.divider,
-                commands.quote,
-                commands.unorderedListCommand,
-                commands.orderedListCommand,
-              ]}
-              extraCommands={[
-                commands.fullscreen,
-              ]}
-            />
+            <div style={{ position: 'relative' }}>
+              <MDEditor
+                value={content}
+                onChange={handleContentChange}
+                preview="edit"
+                height={300}
+                visibleDragbar={false}
+                hideToolbar={false}
+                textareaProps={{
+                  placeholder: '分享你的想法...'
+                }}
+                commands={[
+                  commands.bold,
+                  commands.italic,
+                  commands.strikethrough,
+                  commands.hr,
+                  commands.divider,
+                  commands.link,
+                  imageUploadCommand,
+                  commands.divider,
+                  commands.codeBlock,
+                  commands.quote,
+                  commands.divider,
+                  commands.unorderedListCommand,
+                  commands.orderedListCommand,
+                ]}
+              />
+              <MentionList 
+                results={mentionResults} 
+                onSelect={(user) => insertMention(user, content, setContent)}
+                style={{ bottom: '100%', left: 0 }}
+              />
+            </div>
           </div>
 
           <div className="modal-actions">

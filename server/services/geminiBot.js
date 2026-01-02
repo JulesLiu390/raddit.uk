@@ -1,5 +1,8 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const axios = require('axios');
+const Message = require('../models/Message');
+const Post = require('../models/Post');
+const User = require('../models/User');
 
 // TODO: Replace with your actual API key or ensure it's in .env
 const API_KEY = process.env.GEMINI_API_KEY;
@@ -45,6 +48,9 @@ const model = genAI.getGenerativeModel({
   model: "gemini-2.5-flash-lite",
   systemInstruction: SYSTEM_INSTRUCTION,
 });
+
+// Bot User ID (Hardcoded for now, should match init_bot_user.js)
+const BOT_GOOGLE_ID = 'raddit-ai-bot-001';
 
 /**
  * Fetches an image from a URL and converts it to a GenerativeAI Part object.
@@ -103,6 +109,167 @@ async function generateBotReply(title, content, imageUrls = []) {
     console.error("Error generating bot reply:", error);
     return null;
   }
+}
+
+// --- Active Polling Logic ---
+
+// Memory cache for processed messages to prevent duplicate replies
+const processedMessages = new Set();
+// Time cursor to track the last checked time
+let lastCheckedTime = new Date();
+
+// Clean up cache every 10 minutes
+setInterval(() => {
+  processedMessages.clear();
+}, 600000);
+
+/**
+ * Recursively builds the conversation context by traversing parent messages.
+ * @param {string} messageId 
+ * @returns {Promise<string>}
+ */
+async function buildContext(messageId) {
+  const context = [];
+  let currentId = messageId;
+  let depth = 0;
+  const MAX_DEPTH = 5; // Limit recursion depth
+
+  while (currentId && depth < MAX_DEPTH) {
+    const msg = await Message.findById(currentId);
+    if (!msg) break;
+
+    // Prepend to context (reverse chronological order for building, but we want chronological for AI)
+    context.unshift(`[User ${msg.author}]: ${msg.content}`);
+    
+    currentId = msg.parentId;
+    depth++;
+  }
+  
+  return context.join('\n');
+}
+
+/**
+ * Main polling function to check for mentions and replies.
+ */
+async function pollForMentions() {
+  if (!API_KEY) return;
+
+  try {
+    // 1. Find new messages since last check
+    const mentions = await Message.find({
+      createdAt: { $gt: lastCheckedTime },
+      authorId: { $ne: BOT_GOOGLE_ID }, // Don't reply to self
+      $or: [
+        { content: { $regex: /@志涛|@不吃香菜|@4k/i } }, // Mention by name
+        { replyToUserId: BOT_GOOGLE_ID } // Reply to bot
+      ]
+    });
+
+    // Update cursor to now
+    lastCheckedTime = new Date();
+
+    if (mentions.length > 0) {
+        console.log(`[Bot] Found ${mentions.length} new mentions.`);
+    }
+
+    for (const msg of mentions) {
+      // Memory check
+      if (processedMessages.has(msg._id.toString())) {
+        continue;
+      }
+
+      // Database check: Did bot reply to this user in this post AFTER the message was created?
+      // This handles the flattened structure where parentId might not be msg._id
+      const existingReply = await Message.findOne({
+        postId: msg.postId,
+        authorId: BOT_GOOGLE_ID,
+        replyToUserId: msg.authorId,
+        createdAt: { $gt: msg.createdAt }
+      });
+
+      if (existingReply) {
+        console.log(`[Bot] Skipping ${msg._id} (Found existing reply in DB: ${existingReply._id})`);
+        processedMessages.add(msg._id.toString());
+        continue;
+      }
+
+      console.log(`[Bot] Processing mention in message: ${msg._id} Content: ${msg.content}`);
+      
+      // Mark as processed immediately
+      processedMessages.add(msg._id.toString());
+
+      // 2. Build Context
+      const conversationHistory = await buildContext(msg._id);
+      const post = await Post.findById(msg.postId);
+      
+      if (!post) continue;
+
+      // 3. Generate Reply with Context
+      const prompt = `
+      Context:
+      Post Title: ${post.title}
+      Post Content: ${post.content}
+      
+      Conversation Chain:
+      ${conversationHistory}
+      
+      Instruction:
+      You are replying to the last message in the chain. 
+      Remember your persona (Zhitao). Be defensive, mansplaining, or dismissive as per your character.
+      `;
+
+      const result = await model.generateContent(prompt);
+      const replyText = result.response.text();
+
+      // 4. Save Reply
+      if (replyText) {
+        let parentId = msg._id;
+        let depth = (msg.depth || 1) + 1;
+        let replyToUserId = msg.authorId;
+        let replyToName = msg.author;
+
+        // Flattening Logic for Bot
+        if ((msg.depth || 1) >= 2) {
+            parentId = msg.parentId; // Point to root
+            depth = 2;
+            // replyToUserId/Name are already set to the person we are replying to (msg)
+        } else {
+            // Replying to root
+            parentId = msg._id;
+            depth = 2;
+        }
+
+        // Fetch bot user to get latest avatar/name
+        const botUser = await User.findOne({ googleId: BOT_GOOGLE_ID });
+        const botName = botUser ? botUser.name : '志涛';
+        const botAvatar = botUser ? botUser.picture : '';
+
+        await Message.create({
+          postId: msg.postId,
+          author: botName,
+          authorAvatar: botAvatar,
+          authorId: BOT_GOOGLE_ID,
+          content: replyText,
+          parentId: parentId,
+          depth: depth,
+          replyToUserId: replyToUserId,
+          replyToName: replyToName,
+          createdAt: new Date(),
+          isBot: true
+        });
+        console.log(`[Bot] Replied to mention: ${replyText.substring(0, 20)}...`);
+      }
+    }
+  } catch (err) {
+    console.error('[Bot] Polling error:', err);
+  }
+}
+
+// Start polling loop (every 5 seconds)
+// Only start if we are in a running server context (not during build/test)
+if (process.env.NODE_ENV !== 'test') {
+  setInterval(pollForMentions, 5000);
+  console.log('[Bot] Active polling started.');
 }
 
 module.exports = { generateBotReply };
