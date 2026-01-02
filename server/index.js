@@ -1540,9 +1540,7 @@ async function enrichContentWithUser(items) {
       itemObj.author = user.name;
       itemObj.authorAvatar = user.picture;
       itemObj.authorRole = user.role;
-      if (itemObj.hasOwnProperty('authorBio')) {
-        itemObj.authorBio = user.bio;
-      }
+      itemObj.authorBio = user.bio;
       
       // Add isBot flag
       if (user.googleId === 'raddit-ai-bot-001') {

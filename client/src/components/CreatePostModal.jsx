@@ -172,10 +172,22 @@ function CreatePostModal({ onClose, onSubmit, user, initialTopic }) {
           const url = await uploadImageToImgBB(file);
           
           // 获取当前光标位置
-          const textarea = e.target;
-          const start = textarea.selectionStart;
-          const end = textarea.selectionEnd;
-          const currentContent = content || '';
+          // 注意：MDEditor 的 textarea 可能不是直接的 e.target，或者 e.target 是 textarea 但我们需要确保
+          // 如果 e.target 不是 textarea (比如是 div)，我们需要找到 textarea
+          let textarea = e.target;
+          if (textarea.tagName !== 'TEXTAREA') {
+             textarea = textarea.querySelector('textarea');
+          }
+          
+          if (!textarea) {
+             // Fallback: just append if we can't find textarea
+             setContent(prev => prev + `\n![image](${url})`);
+             return;
+          }
+
+          const start = textarea.selectionStart || 0;
+          const end = textarea.selectionEnd || 0;
+          const currentContent = textarea.value || '';
           
           // 在光标位置插入图片
           const imageMarkdown = `![image](${url})`;
@@ -427,7 +439,8 @@ function CreatePostModal({ onClose, onSubmit, user, initialTopic }) {
                 visibleDragbar={false}
                 hideToolbar={false}
                 textareaProps={{
-                  placeholder: '分享你的想法...'
+                  placeholder: '分享你的想法...',
+                  onPaste: handlePaste
                 }}
                 commands={[
                   commands.bold,

@@ -75,6 +75,69 @@ const imageUploadCommand = {
   },
 };
 
+// 处理粘贴图片
+const handlePaste = async (e, setContent) => {
+  const items = e.clipboardData?.items;
+  if (!items) return;
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    
+    // 检查是否为图片
+    if (item.type.indexOf('image') !== -1) {
+      e.preventDefault(); // 阻止默认粘贴行为
+      
+      const file = item.getAsFile();
+      if (!file) continue;
+
+      try {
+        console.log('正在上传图片...');
+        const url = await uploadImageToImgBB(file);
+        
+        // 获取当前光标位置
+        let textarea = e.target;
+        if (textarea.tagName !== 'TEXTAREA') {
+           textarea = textarea.querySelector('textarea');
+        }
+        
+        if (!textarea) {
+           // Fallback: just append if we can't find textarea
+           setContent(prev => prev + `\n![image](${url})`);
+           return;
+        }
+
+        const start = textarea.selectionStart || 0;
+        const end = textarea.selectionEnd || 0;
+        
+        // 获取当前内容
+        const currentContent = textarea.value || '';
+        
+        // 在光标位置插入图片
+        const imageMarkdown = `![image](${url})`;
+        const newContent = 
+          currentContent.substring(0, start) + 
+          imageMarkdown + 
+          currentContent.substring(end);
+        
+        setContent(newContent);
+        
+        // 设置新的光标位置（图片 Markdown 之后）
+        setTimeout(() => {
+          const newPosition = start + imageMarkdown.length;
+          textarea.setSelectionRange(newPosition, newPosition);
+          textarea.focus();
+        }, 0);
+        
+      } catch (error) {
+        console.error('粘贴图片上传失败:', error);
+        alert(`图片上传失败: ${error.message}`);
+      }
+      
+      break; // 只处理第一张图片
+    }
+  }
+};
+
 const CommentNode = ({ 
   message, 
   user, 
@@ -643,59 +706,6 @@ function PostDetailPage({ user, onLogout, onCreatePost }) {
       setMessages(processedData);
     } catch (err) {
       console.error('获取评论失败:', err);
-    }
-  };
-
-  // 处理粘贴图片
-  const handlePaste = async (e, setContent) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      
-      // 检查是否为图片
-      if (item.type.indexOf('image') !== -1) {
-        e.preventDefault(); // 阻止默认粘贴行为
-        
-        const file = item.getAsFile();
-        if (!file) continue;
-
-        try {
-          console.log('正在上传图片...');
-          const url = await uploadImageToImgBB(file);
-          
-          // 获取当前光标位置
-          const textarea = e.target;
-          const start = textarea.selectionStart;
-          const end = textarea.selectionEnd;
-          
-          // 获取当前内容
-          const currentContent = textarea.value || '';
-          
-          // 在光标位置插入图片
-          const imageMarkdown = `![image](${url})`;
-          const newContent = 
-            currentContent.substring(0, start) + 
-            imageMarkdown + 
-            currentContent.substring(end);
-          
-          setContent(newContent);
-          
-          // 设置新的光标位置（图片 Markdown 之后）
-          setTimeout(() => {
-            const newPosition = start + imageMarkdown.length;
-            textarea.setSelectionRange(newPosition, newPosition);
-            textarea.focus();
-          }, 0);
-          
-        } catch (error) {
-          console.error('粘贴图片上传失败:', error);
-          alert(`图片上传失败: ${error.message}`);
-        }
-        
-        break; // 只处理第一张图片
-      }
     }
   };
 

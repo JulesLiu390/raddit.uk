@@ -149,7 +149,7 @@ function FeedPostCard({ post, user }) {
           <img src={post.authorAvatar} alt={post.author} className="author-avatar-small" />
         )}
         <span className="author-name">{post.author}</span>
-        <span className="author-bio">{post.authorBio || '用户'}</span>
+        {post.authorBio && <span className="author-bio">{post.authorBio}</span>}
         <span className="post-date" style={{ marginLeft: 'auto', color: '#8590a6', fontSize: '12px' }}>
           {new Date(post.createdAt).toLocaleDateString()}
         </span>
